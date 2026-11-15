@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block titulo %}Inicio · FireSpace{% endblock %}
+
+{% block contenido %}
+  <h1>Bienvenido a FireSpace</h1>
+
+  <p>
+    FireSpace es una plataforma web de consulta científica sobre la combustión,
+    especialmente en microgravedad y en el espacio. Nació como proyecto universitario
+    para el NASA Space Apps Challenge 2026.
+  </p>
+
+  <h2>¿Qué puedes hacer aquí?</h2>
+  <ul>
+    <li>
+      <a href="{{ url_for('asistente') }}">Asistente IA</a>:
+      hacer preguntas sobre combustión espacial y recibir explicaciones en español.
+    </li>
+    <li>
+      <a href="{{ url_for('simulacion') }}">Simulación 3D</a>:
+      explorar visualmente cómo cambia una llama al modificar sus parámetros.
+    </li>
+  </ul>
+
+  <h2>Fuentes de información</h2>
+  <ul>
+    <li><a href="https://psi.nasa.gov/physci/repo/search?q=combustion" target="_blank" rel="noopener noreferrer">NASA Physical Sciences Informatics (PSI)</a></li>
+    <li><a href="https://ntrs.nasa.gov/" target="_blank" rel="noopener noreferrer">NASA Technical Reports Server (NTRS)</a></li>
+    <li><a href="https://www.nasa.gov/glenn/glenn-expertise-space-exploration/physical-sciences-program/combustion-science/" target="_blank" rel="noopener noreferrer">NASA Combustion Science</a></li>
+    <li><a href="https://www.nasa.gov/missions/station/a-researchers-guide-to-combustion-science/" target="_blank" rel="noopener noreferrer">A Researcher's Guide to ISS Combustion Science</a></li>
+  </ul>
+
+  <h2>Aviso</h2>
+  <p>
+    FireSpace es un proyecto de estudiantes y no es un producto oficial de NASA.
+    Verifica siempre la información en las fuentes originales.
+  </p>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block titulo %}Asistente IA · FireSpace{% endblock %}
+
+{% block contenido %}
+  <h1>Asistente IA</h1>
+
+  <input id="pregunta" type="text" size="60" placeholder="Escribe tu pregunta...">
+  <button id="enviar">Enviar</button>
+
+  <h3>Respuesta:</h3>
+  <pre id="respuesta" style="white-space: pre-wrap;"></pre>
+
+  <h3>Fuentes:</h3>
+  <ul id="fuentes"></ul>
+
+  <script>
+    const input = document.getElementById("pregunta");
+    const boton = document.getElementById("enviar");
+    const salida = document.getElementById("respuesta");
+    const listaFuentes = document.getElementById("fuentes");
+
+    function mostrarFuentes(fuentes) {
+      listaFuentes.replaceChildren();
+      for (const f of fuentes) {
+        const li = document.createElement("li");
+        li.appendChild(document.createTextNode("[" + f.id + "] " + f.fuente + " — "));
+        if (typeof f.url === "string" && f.url.startsWith("https://")) {
+          const a = document.createElement("a");
+          a.href = f.url;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = f.titulo;
+          li.appendChild(a);
+        } else {
+          li.appendChild(document.createTextNode(f.titulo));
+        }
+        listaFuentes.appendChild(li);
+      }
+    }
+
+    async function enviar() {
+      const pregunta = input.value.trim();
+      if (!pregunta) return;
+
+      boton.disabled = true;
+      salida.textContent = "Pensando...";
+      listaFuentes.replaceChildren();
+
+      try {
+        const r = await fetch("/api/preguntar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pregunta })
+        });
+        const datos = await r.json();
+
+        if (datos.ok) {
+          salida.textContent = datos.respuesta;
+          mostrarFuentes(datos.fuentes || []);
+        } else {
+          salida.textContent = "Error: " + datos.error;
+        }
+      } catch (e) {
+        salida.textContent = "Error: no se pudo conectar con el servidor.";
+      } finally {
+        boton.disabled = false;
+      }
+    }
+
+    boton.addEventListener("click", enviar);
+    input.addEventListener("keydown", e => { if (e.key === "Enter") enviar(); });
+  </script>
+{% endblock %}
