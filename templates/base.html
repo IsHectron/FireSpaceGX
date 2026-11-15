@@ -2,40 +2,52 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>{% block titulo %}FireSpace{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}FireSpace GX{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  {% block head %}{% endblock %}
 </head>
-<body>
-  <table border="1" cellpadding="12" width="100%">
-    <tr>
-      <!-- PANEL LATERAL: aparece en las 3 páginas -->
-      <td valign="top" width="180">
-        <h2>🔥 FireSpace</h2>
-        <ul>
-          <li>
-            {% if request.endpoint == 'inicio' %}<b>{% endif %}
-            <a href="{{ url_for('inicio') }}">Inicio</a>
-            {% if request.endpoint == 'inicio' %}</b>{% endif %}
-          </li>
-          <li>
-            {% if request.endpoint == 'asistente' %}<b>{% endif %}
-            <a href="{{ url_for('asistente') }}">Asistente IA</a>
-            {% if request.endpoint == 'asistente' %}</b>{% endif %}
-          </li>
-          <li>
-            {% if request.endpoint == 'simulacion' %}<b>{% endif %}
-            <a href="{{ url_for('simulacion') }}">Simulación 3D</a>
-            {% if request.endpoint == 'simulacion' %}</b>{% endif %}
-          </li>
-        </ul>
-      </td>
+<body class="pagina-{{ request.endpoint }}">
+{% from '_macros.html' import mascota %}
 
-      <!-- CONTENIDO: cada página rellena este hueco -->
-      <td valign="top">
-        {% block contenido %}{% endblock %}
-      </td>
-    </tr>
-  </table>
+<div class="app" id="app">
+  <!-- PANEL LATERAL: aparece en las 3 páginas -->
+  <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
+    <button class="sidebar__menu" id="btnMenu" type="button" aria-label="Abrir menú" title="Menú">
+      <svg viewBox="0 0 24 24"><path d="M4 6h2M9 6h11M4 12h2M9 12h11M4 18h2M9 18h11"/></svg>
+    </button>
+    <a class="sidebar__logo" href="{{ url_for('inicio') }}" title="Inicio">FireSpace GX</a>
 
-  {% block scripts %}{% endblock %}
+    <nav class="sidebar__nav">
+      <a class="nav-item {% if request.endpoint == 'asistente' %}activo{% endif %}" href="{{ url_for('asistente') }}" title="Asistente IA (ApiGx)">
+        <span class="nav-item__icono">{{ mascota('mascota--nav') }}</span>
+        <span class="nav-item__texto">Apigx</span>
+      </a>
+      <a class="nav-item {% if request.endpoint == 'simulacion' %}activo{% endif %}" href="{{ url_for('simulacion') }}" title="Simulación 3D">
+        <span class="nav-item__icono">
+          <svg class="icono-cubo" viewBox="0 0 48 48">
+            <path class="cubo-borde" d="M24 3 42 13.5v21L24 45 6 34.5v-21z"/>
+            <path d="M24 12 34 17.5v13L24 36l-10-5.5v-13zM14 17.5 24 23l10-5.5M24 23v13"/>
+          </svg>
+        </span>
+        <span class="nav-item__texto">3GX</span>
+      </a>
+    </nav>
+
+    <button class="sidebar__toggle" id="btnSidebar" type="button" aria-label="Contraer menú lateral">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m13.5 8-4 4 4 4"/></svg>
+    </button>
+  </aside>
+
+  <!-- CONTENIDO: cada página rellena este hueco -->
+  <main class="contenido" id="contenido">
+    {% block contenido %}{% endblock %}
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/comun.js') }}"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

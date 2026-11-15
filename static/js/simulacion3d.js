@@ -363,7 +363,7 @@
         colorscale: escalaTemperatura(),
         opacity: 0.8,
         line: { width: 0 },
-        colorbar: { title: "Temperatura (°C)", thickness: 12 },
+        colorbar: { title: "Temperatura (°C)", thickness: 12, len: 0.45, x: 0.98, xanchor: "right", y: 0.04, yanchor: "bottom" },
       },
       hoverinfo: "skip",
       name: "Volumen caliente",
@@ -431,35 +431,24 @@
     ];
 
     var rango = Math.max(p.altura, p.ancho) * 0.65 + 0.5;
+    // Estilo visual de FireSpace GX (visor gris tipo editor 3D). Sólo colores y márgenes.
+    var ejeVisor = {
+      color: "#b5b5b5",
+      gridcolor: "#565656",
+      zerolinecolor: "#7fbf2a",
+      backgroundcolor: "#3b3b3b",
+      showbackground: true,
+    };
     var layout = {
-      title: { text: "Llama 3D — " + p.forma, font: { color: "#f8fafc", size: 15 } },
-      paper_bgcolor: "#0f172a",
-      font: { color: "#e2e8f0" },
-      margin: { l: 0, r: 0, t: 40, b: 0 },
+      paper_bgcolor: "#3b3b3b",
+      font: { color: "#e5e5e5", family: "Inter, system-ui, sans-serif" },
+      margin: { l: 0, r: 0, t: 0, b: 0 },
       showlegend: false,
       scene: {
-        bgcolor: "#0f172a",
-        xaxis: {
-          title: "X (cm)",
-          range: [-rango, rango],
-          color: "#94a3b8",
-          gridcolor: "#1e293b",
-          zerolinecolor: "#334155",
-        },
-        yaxis: {
-          title: "Y (cm)",
-          range: [-rango, rango],
-          color: "#94a3b8",
-          gridcolor: "#1e293b",
-          zerolinecolor: "#334155",
-        },
-        zaxis: {
-          title: "Altura (cm)",
-          range: [-1.0, p.baseZ + p.altura + 1.2],
-          color: "#94a3b8",
-          gridcolor: "#1e293b",
-          zerolinecolor: "#334155",
-        },
+        bgcolor: "#3b3b3b",
+        xaxis: Object.assign({ title: "X (cm)", range: [-rango, rango] }, ejeVisor),
+        yaxis: Object.assign({ title: "Y (cm)", range: [-rango, rango] }, ejeVisor),
+        zaxis: Object.assign({ title: "Altura (cm)", range: [-1.0, p.baseZ + p.altura + 1.2] }, ejeVisor),
         aspectmode: "manual",
         aspectratio: { x: 1, y: 1, z: 1.3 },
         camera: { eye: { x: 1.7, y: 1.7, z: 0.9 } },
