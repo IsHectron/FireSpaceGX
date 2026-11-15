@@ -11,7 +11,8 @@ from openai import OpenAI
 
 import biblioteca
 
-load_dotenv(override=True)  # el .env siempre manda, aunque la terminal tenga valores viejos
+load_dotenv(override=True)
+# el .env siempre manda, aunque la terminal tenga valores viejos
 
 app = Flask(__name__)
 
@@ -656,6 +657,108 @@ def preguntar():
     citados = sorted(set(citados) | {n for b in panel["bloques"] for n in b["citas"]})
     fuentes = agrupar_fuentes(fragmentos, citados)
     return jsonify({"ok": True, "modelo": modelo, "respuesta": texto, "fuentes": fuentes, "panel": panel})
+
+
+# ---------- INTERPRETACIÓN DE LA SIMULACIÓN 3D ----------
+
+PROMPT_INTERPRETAR = """Eres el asistente de FireSpace y analizas una llama simulada en la sección 3GX.
+Recibes las condiciones que eligió el usuario y fragmentos numerados de fuentes oficiales de NASA.
+
+Reglas obligatorias:
+1. Todo dato concreto (cifras, rangos de prueba, resultados, comportamientos observados, nombres de experimentos) debe venir de los fragmentos y llevar su cita entre corchetes, por ejemplo [2] o [1][3]. Nunca inventes datos, cifras ni experimentos.
+2. Los valores de la simulación (tamaño, temperatura, forma, color) vienen de un modelo ilustrativo de la página, no de un experimento: dilo si es relevante y compáralos con lo que reportan los fragmentos (por ejemplo, si el oxígeno elegido está dentro o fuera de los rangos probados).
+3. Si los fragmentos no permiten saber algo, dilo con naturalidad ("No tengo datos sobre..."). Puedes usar conocimiento científico general para explicar conceptos, sin cita y presentado como explicación, nunca como resultado de NASA.
+4. Responde en español, en texto plano sin Markdown (nada de asteriscos ni almohadillas). Los fragmentos están en inglés: tradúcelos con fidelidad. No menciones "los fragmentos" ni "las fuentes": las citas ya indican el origen.
+5. Formato EXACTO:
+NIVEL: bajo | moderado | alto | sin datos
+Qué significa: 2 a 4 frases sobre cómo se comportaría una llama así según la investigación.
+¿Representa un peligro?: 2 a 4 frases, explicando por qué según la investigación.
+Qué hacer: 2 a 4 guiones con acciones de seguridad o de control (detección, ventilación, oxígeno, supresión), cada una respaldada con cita cuando venga de la investigación.
+Sé breve y concreto."""
+
+COMBUSTIBLES_EN = {
+    "n-decano": "decane", "etanol": "ethanol", "n-heptano": "heptane",
+    "n-hexanol": "hexanol", "metanol": "methanol",
+}
+
+
+def _numero_entre(valor, minimo, maximo, defecto):
+    n = numero(valor)
+    return defecto if n is None else max(minimo, min(maximo, n))
+
+
+@app.route("/api/interpretar-llama", methods=["POST"])
+def interpretar_llama():
+    datos = request.get_json(silent=True) or {}
+    if not biblioteca.disponible():
+        return jsonify({"ok": False, "error": "La biblioteca todavía no está lista."}), 503
+
+    gravedad = _numero_entre(datos.get("gravedad"), 0, 1, 1)
+    oxigeno = _numero_entre(datos.get("oxigeno"), 10, 40, 21)
+    temperatura = _numero_entre(datos.get("temperatura"), 0, 3000, 0)
+    tamano = _numero_entre(datos.get("tamano"), 1, 10, 5)
+    diametro = _numero_entre(datos.get("diametro"), 0.1, 5, 0.6)
+    forma = corto(datos.get("forma"), 80)
+    color = corto(datos.get("color"), 80)
+    compuestos = [
+        {"nombre": corto(c.get("nombre"), 30), "fraccion": _numero_entre(c.get("fraccion"), 0, 1, 0)}
+        for c in lista_de(datos.get("compuestos"), 6)
+    ]
+    compuestos = [c for c in compuestos if c["nombre"] and c["fraccion"] > 0]
+
+    # Búsqueda en la biblioteca (en inglés, como los documentos)
+    terminos = ["flame", "fire", "microgravity" if gravedad < 0.5 else "buoyancy gravity",
+                "oxygen concentration", "flammability limits", "extinction", "spacecraft fire safety"]
+    if compuestos:
+        terminos += ["FLEX-2", "droplet", "soot"]
+        terminos += [COMBUSTIBLES_EN.get(c["nombre"].lower(), c["nombre"]) for c in compuestos]
+    if oxigeno >= 28:
+        terminos.append("elevated oxygen enriched atmosphere")
+    fragmentos = biblioteca.buscar(" ".join(terminos), FRAGMENTOS_POR_PREGUNTA)
+    if not fragmentos:
+        return jsonify({"ok": False, "error": "No encontré investigaciones en la biblioteca para estas condiciones."}), 404
+
+    condiciones = (
+        f"- Gravedad: {gravedad:.2f} g (0 = microgravedad, 1 = Tierra)\n"
+        f"- Oxígeno en el ambiente: {oxigeno:.0f} %\n"
+        f"- Tamaño de la llama (escala 1-10): {tamano:.0f}; diámetro del quemador: {diametro:.1f} cm\n"
+        f"- Resultado del modelo ilustrativo: forma {forma or 'sin dato'}, temperatura máxima ~{temperatura:.0f} °C, color {color or 'sin dato'}\n"
+        + ("- Combustible (compuestos de PSI-68 / FLEX-2): "
+           + ", ".join(f"{c['nombre']} {c['fraccion'] * 100:.0f} %" for c in compuestos)
+           if compuestos else "- Combustible: hidrocarburo genérico (sin compuesto elegido)")
+    )
+    contexto = "\n\n".join(
+        f"[{i}] (Documento: {f['titulo']})\n{f['texto']}" for i, f in enumerate(fragmentos, start=1)
+    )
+    try:
+        texto, modelo = generar(
+            [{"role": "system", "content": PROMPT_INTERPRETAR},
+             {"role": "user", "content": f"Condiciones elegidas:\n{condiciones}\n\nFragmentos:\n\n{contexto}"}],
+            temperatura=0.2,
+            max_tokens=MAX_TOKENS_RESPUESTA,
+        )
+    except Exception as e:
+        if es_limite_de_uso(e):
+            avisar_limite(e)
+            return jsonify({"ok": False, "error": MENSAJE_LIMITE}), 429
+        app.logger.exception("Error al interpretar la simulación")
+        return jsonify({"ok": False, "error": "No se pudo obtener la interpretación de la IA."}), 502
+    if not texto:
+        return jsonify({"ok": False, "error": "La IA devolvió una respuesta vacía. Intenta de nuevo."}), 502
+
+    nivel = "sin datos"
+    coincidencia = re.match(r"\s*NIVEL:\s*([^\n]+)", texto, re.IGNORECASE)
+    if coincidencia:
+        valor = biblioteca.sin_acentos(coincidencia.group(1).lower())
+        nivel = next((n for n in ("alto", "moderado", "bajo") if n in valor), "sin datos")
+        texto = texto[coincidencia.end():].strip()
+
+    texto, citados = validar_citas(limpiar_redaccion(texto), len(fragmentos))
+    return jsonify({
+        "ok": True, "modelo": modelo, "nivel": nivel, "interpretacion": texto,
+        "fuentes": agrupar_fuentes(fragmentos, citados) if citados else [],
+        "sin_citas": not citados,
+    })
 
 
 if __name__ == "__main__":

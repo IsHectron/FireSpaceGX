@@ -579,3 +579,90 @@ a.cita:hover { background: var(--naranja); color: #fff; }
   .asistente.dash-abierto .pia-bloque--tabla,
   .asistente.dash-abierto .pia-bloque--comparacion { grid-column: auto; }
 }
+
+/* ======================================================================
+   Ajustes v3: inicio (texto justificado), menú con Inicio y 3GX en columnas
+   ====================================================================== */
+
+/* --- Inicio: texto más grande y justificado --- */
+.hero__texto { font-size: 17.5px; line-height: 1.6; max-width: 720px; text-align: justify; hyphens: auto; }
+.hero__texto p { margin-bottom: 22px; }
+.paso p { text-align: justify; hyphens: auto; font-size: 15px; }
+
+/* --- Menú lateral: marca a la izquierda + opción Inicio alineada con Apigx y 3GX --- */
+.sidebar__logo {
+  display: flex; align-items: center; gap: 8px;
+  text-align: left; padding: 0 0 0 6px; font-size: 16px; margin-bottom: 22px;
+}
+.sidebar__logo::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--naranja); box-shadow: 0 0 10px var(--naranja);
+}
+.nav-item { position: relative; }
+.nav-item.activo::before {
+  content: ""; position: absolute; left: -12px; top: 18%; bottom: 18%; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--naranja);
+}
+.icono-inicio {
+  width: 50px; height: 50px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(255,122,26,.12); border: 1.5px solid rgba(255,122,26,.55);
+  transition: background .2s, border-color .2s;
+}
+.icono-inicio svg { width: 26px; height: 26px; fill: none; stroke: var(--naranja); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nav-item:hover .icono-inicio, .nav-item.activo .icono-inicio { background: var(--naranja); border-color: var(--naranja); }
+.nav-item:hover .icono-inicio svg, .nav-item.activo .icono-inicio svg { stroke: #fff; }
+.sb-contraida .icono-inicio { width: 28px; height: 28px; border-width: 1px; }
+.sb-contraida .icono-inicio svg { width: 16px; height: 16px; }
+.sb-contraida .nav-item.activo::before { left: -4px; }
+
+/* --- 3GX: visor + columna lateral --- */
+.pagina-simulacion .contenido { overflow: hidden; }
+.sim { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: 100%; }
+.sim__visor { position: relative; min-width: 0; min-height: 0; }
+.sim__visor .escena { position: absolute; inset: 0; z-index: 1; }
+.sim__visor .sim-filtro { left: 60px; }
+.sim__ayuda { position: absolute; left: 60px; bottom: 14px; z-index: 4; margin: 0; font-size: 11px; color: #aaa; }
+.sim__lateral {
+  background: #2b2b33; border-left: 1px solid #45454f; overflow-y: auto;
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+}
+.pagina-simulacion .panel-sliders,
+.sim__lateral .panel-sliders {
+  position: static; width: auto; max-height: none; overflow: visible;
+  background: rgba(30,30,40,.5); top: auto; right: auto;
+}
+.entornos--2 { grid-template-columns: 1fr; margin-top: 4px; }
+.mini-nota b { color: #eee; }
+
+.sim-tarjeta { background: rgba(5,7,28,.86); border: 1px solid #2a2f6a; border-radius: var(--radio); padding: 14px 16px; }
+.sim-tarjeta__cab { display: flex; align-items: center; gap: 10px; }
+.sim-tarjeta__cab h2 { font-size: 14px; margin: 0; flex: 1; }
+.sim-tarjeta__cab .mascota { width: 30px; height: 30px; }
+.sim-tarjeta__cuerpo { margin-top: 10px; }
+.sim-tarjeta.plegado .sim-tarjeta__cuerpo { display: none; }
+.sim-tarjeta p { font-size: 13px; line-height: 1.5; color: var(--texto-2); margin: 0 0 8px; }
+.sim-tarjeta .mas-info p { margin-top: 6px; }
+
+.sim-ia { border-color: rgba(255,122,26,.45); }
+.sim-ia__boton { width: 100%; justify-content: center; padding: 10px 16px; font-size: 14px; }
+.sim-ia__boton:disabled { opacity: .6; cursor: wait; }
+.sim-ia__estado { margin: 10px 0 0 !important; font-size: 12.5px !important; color: #ffe29a !important; }
+.sim-ia__estado.error { color: #ffb3bb !important; }
+.sim-ia__resultado { margin-top: 12px; }
+.sim-ia__texto p { color: var(--texto); text-align: justify; }
+.sim-ia__texto b { color: var(--naranja-2); }
+.sim-ia__texto ul { margin: 0 0 8px; padding-left: 18px; font-size: 13px; line-height: 1.5; color: var(--texto-2); }
+.sim-ia__texto li { margin-bottom: 4px; }
+.nivel { display: inline-block; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-bottom: 10px; letter-spacing: .03em; }
+.nivel--alto { background: rgba(255,77,94,.18); color: #ff9aa5; border: 1px solid rgba(255,77,94,.5); }
+.nivel--moderado { background: rgba(255,201,60,.14); color: #ffe29a; border: 1px solid rgba(255,201,60,.45); }
+.nivel--bajo { background: rgba(61,220,151,.14); color: #9ff0c9; border: 1px solid rgba(61,220,151,.45); }
+.nivel--sin-datos { background: rgba(255,255,255,.08); color: var(--texto-2); border: 1px solid #45454f; }
+
+@media (max-width: 900px) {
+  .pagina-simulacion .contenido { overflow-y: auto; }
+  .sim { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+  .sim__lateral { border-left: 0; border-top: 1px solid #45454f; overflow: visible; }
+  .sim__visor .sim-filtro, .sim__ayuda { left: 16px; }
+}
