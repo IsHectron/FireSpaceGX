@@ -10,25 +10,71 @@
     y no un cálculo físico riguroso.
   </p>
 
-  <!-- Aquí se dibujará la escena 3D -->
-  <div id="escena-3d" style="width: 100%; height: 400px; border: 1px solid black;">
-    (La escena 3D aparecerá aquí)
-  </div>
+  <!-- Gráfica 3D interactiva (Plotly). Gira, acerca y aleja con el ratón. -->
+  <div id="grafica-llama" style="width: 100%; height: 520px;"></div>
 
   <h2>Parámetros</h2>
 
   <p>
     <label for="gravedad">Gravedad (0 = microgravedad, 1 = gravedad terrestre):</label><br>
     <input type="range" id="gravedad" min="0" max="1" step="0.05" value="1">
+    <b id="gravedad-valor">1.00 g</b>
   </p>
 
   <p>
     <label for="oxigeno">Oxígeno en el ambiente (%):</label><br>
     <input type="range" id="oxigeno" min="15" max="35" step="1" value="21">
+    <b id="oxigeno-valor">21 %</b>
   </p>
 
   <p>
     <label for="tamano">Tamaño de la llama:</label><br>
     <input type="range" id="tamano" min="1" max="10" step="1" value="5">
+    <b id="tamano-valor">5</b>
   </p>
+
+  <p>
+    <label for="diametro-quemador">Diámetro del quemador (cm):</label><br>
+    <input type="range" id="diametro-quemador" min="0.2" max="2" step="0.1" value="0.6">
+    <b id="diametro-valor">0.6 cm</b><br>
+    <small>Si no conoces el diámetro real, déjalo en 0,6 cm (mechero pequeño de laboratorio). Al cambiarlo, la altura y el ancho en cm se recalculan en la misma proporción; la forma y la temperatura no cambian.</small>
+  </p>
+
+  <h2>Resultado</h2>
+  <ul>
+    <li>Quemador: <b id="info-quemador">—</b></li>
+    <li>Forma: <b id="info-forma">—</b></li>
+    <li>Altura estimada: <b id="info-altura">—</b></li>
+    <li>Ancho estimado: <b id="info-ancho">—</b></li>
+    <li>Temperatura máxima estimada: <b id="info-temperatura">—</b></li>
+    <li>Color dominante: <b id="info-color">—</b> — <span id="info-color-explicacion">—</span></li>
+    <li><span id="info-oxigeno">—</span></li>
+  </ul>
+
+  <h2>Escala</h2>
+  <p>
+    Las medidas están en <b>cm (aprox.)</b>: 1 unidad de la gráfica = 1 cm.
+    La escala se ancla en el diámetro del quemador que elijas arriba
+    (0,6 cm por defecto): con tamaño 5, 1 g y 21 % de oxígeno la llama
+    mide ~8 cm de alto y ~3 cm de ancho, como una llama pequeña de
+    laboratorio. Si pones un quemador del doble de diámetro, la llama
+    mide el doble de alto y de ancho; si es la mitad, mide la mitad.
+  </p>
+
+  <h2>¿Por qué cambia el color?</h2>
+  <p>
+    Sí, en experimentos reales el color cambia con la temperatura, pero no
+    solo por el calor: el <b>amarillo/naranja</b> es hollín incandescente
+    (combustión incompleta, ~1000–1400 °C) y el <b>azul</b> es
+    quimiluminiscencia de radicales CH* y C2* (combustión completa, casi
+    sin hollín). Por eso una llama más caliente y con más oxígeno se ve
+    azul-blanca, y una fría se ve roja/naranja. En microgravedad la llama
+    tiende a ser esférica y más fría, porque no hay convección que la
+    estire hacia arriba.
+  </p>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="{{ url_for('static', filename='js/simulacion3d.js') }}"></script>
 {% endblock %}
