@@ -1,3 +1,5 @@
+import json
+import math
 import os
 import re
 import time
@@ -27,13 +29,25 @@ MODELO = os.getenv("MODELO_IA", "openrouter/free")
 MAX_CARACTERES_PREGUNTA = 800
 FRAGMENTOS_POR_PREGUNTA = 6
 MAX_TOKENS_CLASIFICAR = 300     # margen suficiente incluso para modelos que "piensan" antes de responder
-MAX_TOKENS_RESPUESTA = 1000
+MAX_TOKENS_RESPUESTA = 2200     # incluye el diseño del panel
 
 # Memoria de la conversación: el navegador envía solo el intercambio anterior
 # (la pregunta anterior y su respuesta), para entender preguntas como "¿y eso por qué?".
 MAX_MENSAJES_HISTORIAL = 2        # 1 pregunta + 1 respuesta
 MAX_CARACTERES_POR_MENSAJE = 700
-PALABRAS_PREGUNTA_CORTA = 8       # preguntas así de cortas suelen depender de la anterior ("¿y eso por qué?")
+PALABRAS_PREGUNTA_CORTA = 4       # preguntas así de cortas suelen depender de la anterior ("¿y eso por qué?")
+
+# Palabras que indican que la pregunta se refiere a algo dicho antes
+PATRON_SEGUIMIENTO = re.compile(
+    r"^y\b|\b(eso|esto|esa|ese|esos|esas|este|esta|estos|estas|ello|ahi|alli|aquello|"
+    r"tambien|entonces|lo anterior|lo mismo|mismo experimento|dicho experimento)\b"
+)
+
+
+def depende_de_la_anterior(pregunta):
+    """True si la pregunta parece continuar la anterior ("¿y eso por qué?", "¿qué materiales usó ese experimento?")."""
+    texto = biblioteca.sin_acentos(pregunta.lower()).strip(" ¿?¡!.,")
+    return len(texto.split()) <= PALABRAS_PREGUNTA_CORTA or bool(PATRON_SEGUIMIENTO.search(texto))
 
 # Razonamiento interno del modelo ("pensar" antes de responder). "none" lo desactiva:
 # respuestas más rápidas y sin el riesgo de que el modelo gaste todos sus tokens pensando.
@@ -90,7 +104,18 @@ Reglas obligatorias:
 5. Sigue la personalidad descrita arriba: por defecto, explica de forma amigable y sencilla para cualquier persona; si la pregunta es técnica, responde con la precisión que esperaría un investigador o ingeniero aeroespacial. Ve al grano: la extensión debe ser proporcional a la pregunta, y una pregunta sencilla merece una respuesta corta.
 6. Responde en español; los fragmentos están en inglés: tradúcelos con fidelidad.
 7. Escribe como si explicaras directamente, con tus propias palabras. Nunca menciones de dónde sacas la información con frases como "las fuentes", "los fragmentos", "los documentos", "el texto" o "la información proporcionada": las citas entre corchetes ya indican el origen y el usuario no sabe qué documentos recibiste. Escribe en texto plano, sin Markdown (nada de asteriscos ni almohadillas); para listas usa guiones.
-8. Puede haber mensajes anteriores de la conversación. Úsalos solo para entender a qué se refiere la pregunta actual (por ejemplo, "eso" o "ese experimento"). Los datos y las citas deben salir únicamente de los fragmentos de esta pregunta."""
+8. Puede haber mensajes anteriores de la conversación. Úsalos solo para entender a qué se refiere la pregunta actual (por ejemplo, "eso" o "ese experimento"). Los datos y las citas deben salir únicamente de los fragmentos de esta pregunta.
+9. Al terminar tu respuesta, escribe una línea que diga exactamente ###PANEL### y debajo un JSON (sin texto extra ni comillas invertidas) que diseñe un tablero visual SOBRE EL TEMA de la pregunta (no sobre las fuentes), para que se entienda de un vistazo. Elige entre 3 y 5 bloques que mejor encajen con la información y varía tipos y orden según el tema; incluye una "grafica" siempre que haya cifras o categorías comparables. Tipos de bloque disponibles:
+- "kpis": indicadores principales. items: [{"icono": "💧", "valor": "1–5 mm", "titulo": "Diámetro de gotas", "detalle": "Rango del equipo"}]
+- "grafica": "subtipo" = "barras", "barras_horizontales", "lineas", "dona" o "radar"; "unidad"; "etiquetas": ["A", "B"]; "series": [{"nombre": "...", "valores": [1, 5]}] (los valores son números y hay uno por etiqueta)
+- "pasos": cómo funciona un proceso. items: [{"titulo": "Ignición", "detalle": "..."}]
+- "comparacion": experimentos o elementos para comparar. items: [{"nombre": "FLEX", "resumen": "Inflamabilidad y extinción", "detalles": [{"campo": "Objetivo", "valor": "..."}]}]
+- "lista": puntos con ícono (por ejemplo, importancia o aplicaciones). items: [{"icono": "🚀", "titulo": "...", "texto": "..."}]
+- "linea_tiempo": items: [{"fecha": "2010", "titulo": "...", "texto": "..."}]
+- "tabla": "columnas": ["..."], "filas": [["...", "..."]]
+- "dato": un dato curioso destacado. "icono", "texto"
+Formato: {"titulo": "título corto del tema", "bloques": [{"tipo": "kpis", "titulo": "...", "citas": [2], "items": [...]}, ...]}
+Cada bloque debe incluir "citas" con los números de los fragmentos de donde sale su información. Todo lo que pongas en el tablero debe estar respaldado por los fragmentos; nunca inventes valores. Textos cortos y en lenguaje sencillo."""
 
 PROMPT_META = PERSONALIDAD + """
 
@@ -298,11 +323,20 @@ def ficha_del_asistente():
     ])
 
 
+AVISO_PRIMER_MENSAJE = (
+    "\n\nIMPORTANTE: este es el PRIMER mensaje de la conversación. No hubo mensajes anteriores: "
+    "no digas ni insinúes que ya hablaron de algo, ni retomes temas \"de antes\"."
+)
+
+
 def responder_conversacion(pregunta, historial=()):
     """Respuesta natural a saludos o preguntas sobre el asistente, basada en la ficha."""
+    sistema = PROMPT_META.format(ficha=ficha_del_asistente())
+    if not historial:
+        sistema += AVISO_PRIMER_MENSAJE  # evita que la IA invente una conversación previa
     try:
         texto, modelo = generar(
-            [{"role": "system", "content": PROMPT_META.format(ficha=ficha_del_asistente())},
+            [{"role": "system", "content": sistema},
              *historial,
              {"role": "user", "content": pregunta}],
             temperatura=0.4,
@@ -387,6 +421,136 @@ def agrupar_fuentes(fragmentos, citados):
     ]
 
 
+MARCA_PANEL = "###PANEL###"
+
+
+def separar_panel(texto):
+    """Separa la respuesta del JSON del panel. Devuelve (respuesta, datos_del_panel)."""
+    if MARCA_PANEL not in texto:
+        return texto, {}
+    respuesta, _, resto = texto.partition(MARCA_PANEL)
+    inicio, fin = resto.find("{"), resto.rfind("}")
+    datos = {}
+    if inicio != -1 and fin > inicio:
+        try:
+            datos = json.loads(resto[inicio:fin + 1])
+        except ValueError:
+            print("[FireSpace] La IA devolvió un JSON de panel inválido; se ignora", flush=True)
+    return respuesta.strip(), datos if isinstance(datos, dict) else {}
+
+
+def numero_de_cita(valor, total):
+    try:
+        n = int(valor)
+    except (TypeError, ValueError):
+        return None
+    return n if 1 <= n <= total else None
+
+
+def corto(valor, maximo):
+    """Texto limpio y recortado (los datos de la IA nunca se usan sin limpiar)."""
+    return " ".join(str(valor if valor is not None else "").split())[:maximo]
+
+
+def lista_de(valor, maximo):
+    return [x for x in valor[:maximo] if isinstance(x, dict)] if isinstance(valor, list) else []
+
+
+def numero(valor):
+    try:
+        n = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return n if math.isfinite(n) else None
+
+
+SUBTIPOS_GRAFICA = {"barras", "barras_horizontales", "lineas", "dona", "radar"}
+
+
+def validar_bloque(bloque, total):
+    """Revisa un bloque del tablero. Devuelve el bloque limpio, o None si no sirve.
+    Un bloque sin citas válidas se descarta: así no se cuelan datos sin respaldo."""
+    if not isinstance(bloque, dict):
+        return None
+    citas = [n for n in (numero_de_cita(c, total) for c in (bloque.get("citas") or [])) if n]
+    if not citas:
+        return None
+    tipo = bloque.get("tipo")
+    limpio = {"tipo": tipo, "titulo": corto(bloque.get("titulo"), 80), "citas": citas}
+
+    if tipo == "kpis":
+        limpio["items"] = [
+            {"icono": corto(i.get("icono"), 8), "valor": corto(i.get("valor"), 24),
+             "titulo": corto(i.get("titulo"), 50), "detalle": corto(i.get("detalle"), 90)}
+            for i in lista_de(bloque.get("items"), 6) if i.get("valor") and i.get("titulo")
+        ]
+    elif tipo == "pasos":
+        limpio["items"] = [
+            {"titulo": corto(i.get("titulo"), 60), "detalle": corto(i.get("detalle"), 180)}
+            for i in lista_de(bloque.get("items"), 7) if i.get("titulo")
+        ]
+    elif tipo == "comparacion":
+        limpio["items"] = [
+            {"nombre": corto(i.get("nombre"), 40), "resumen": corto(i.get("resumen"), 80),
+             "detalles": [{"campo": corto(d.get("campo"), 30), "valor": corto(d.get("valor"), 180)}
+                          for d in lista_de(i.get("detalles"), 6) if d.get("campo") and d.get("valor")]}
+            for i in lista_de(bloque.get("items"), 6) if i.get("nombre")
+        ]
+    elif tipo == "lista":
+        limpio["items"] = [
+            {"icono": corto(i.get("icono"), 8), "titulo": corto(i.get("titulo"), 60), "texto": corto(i.get("texto"), 200)}
+            for i in lista_de(bloque.get("items"), 6) if i.get("titulo") or i.get("texto")
+        ]
+    elif tipo == "linea_tiempo":
+        limpio["items"] = [
+            {"fecha": corto(i.get("fecha"), 20), "titulo": corto(i.get("titulo"), 60), "texto": corto(i.get("texto"), 180)}
+            for i in lista_de(bloque.get("items"), 8) if i.get("fecha") and i.get("titulo")
+        ]
+    elif tipo == "dato":
+        texto = corto(bloque.get("texto"), 260)
+        if not texto:
+            return None
+        limpio.update({"icono": corto(bloque.get("icono"), 8), "texto": texto})
+        return limpio
+    elif tipo == "tabla":
+        columnas = [corto(c, 30) for c in (bloque.get("columnas") or [])[:5]] if isinstance(bloque.get("columnas"), list) else []
+        filas = [[corto(celda, 70) for celda in fila] for fila in (bloque.get("filas") or [])[:8]
+                 if isinstance(fila, list) and len(fila) == len(columnas)]
+        if len(columnas) < 2 or not filas:
+            return None
+        limpio.update({"columnas": columnas, "filas": filas})
+        return limpio
+    elif tipo == "grafica":
+        subtipo = bloque.get("subtipo") if bloque.get("subtipo") in SUBTIPOS_GRAFICA else "barras"
+        etiquetas = [corto(e, 40) for e in (bloque.get("etiquetas") or [])[:12]] if isinstance(bloque.get("etiquetas"), list) else []
+        series = []
+        for serie in lista_de(bloque.get("series"), 3):
+            valores = serie.get("valores")
+            if isinstance(valores, list) and len(valores) == len(etiquetas):
+                numeros = [numero(v) for v in valores]
+                if all(n is not None for n in numeros):
+                    series.append({"nombre": corto(serie.get("nombre"), 40), "valores": numeros})
+        if len(etiquetas) < 2 or not series:
+            return None
+        limpio.update({"subtipo": subtipo, "unidad": corto(bloque.get("unidad"), 20),
+                       "etiquetas": etiquetas, "series": series})
+        return limpio
+    else:
+        return None
+
+    return limpio if limpio["items"] else None
+
+
+def construir_panel(pregunta, fragmentos, datos_ia):
+    """Tablero visual sobre el tema, diseñado por la IA y validado bloque por bloque."""
+    bloques = [b for b in (validar_bloque(b, len(fragmentos)) for b in (datos_ia.get("bloques") or [])[:6]) if b]
+    return {
+        "consulta": pregunta,
+        "titulo": corto(datos_ia.get("titulo"), 80) or pregunta[:80],
+        "bloques": bloques,
+    }
+
+
 def describir_fuente(fragmento):
     texto = fragmento["via"] or "Lista oficial del reto"
     if fragmento["pagina"]:
@@ -428,6 +592,8 @@ def preguntar():
     inicio = time.perf_counter()
     historial = limpiar_historial(datos.get("historial"))
     anterior = ultima_pregunta(historial)
+    print(f"[FireSpace] Mensajes anteriores recibidos: {len(historial)}"
+          + (f" (pregunta anterior: {anterior[:60]!r})" if anterior else " (primer mensaje)"), flush=True)
 
     # 1. ¿Es una pregunta sobre el asistente o una pregunta para las fuentes?
     try:
@@ -441,7 +607,7 @@ def preguntar():
     # 2. Buscar en la biblioteca (palabras en inglés + la pregunta original)
     print(f"[FireSpace] Palabras de búsqueda: {claves or '(ninguna)'}", flush=True)
     texto_busqueda = f"{claves} {pregunta}"
-    if anterior and len(pregunta.split()) <= PALABRAS_PREGUNTA_CORTA:
+    if anterior and depende_de_la_anterior(pregunta):
         texto_busqueda += f" {anterior}"  # "¿y eso por qué?" se busca junto con la pregunta anterior
     fragmentos = biblioteca.buscar(texto_busqueda, FRAGMENTOS_POR_PREGUNTA)
     print(f"[FireSpace] Fragmentos encontrados: {len(fragmentos)}", flush=True)
@@ -458,7 +624,7 @@ def preguntar():
     )
     try:
         texto, modelo = generar(
-            [{"role": "system", "content": PROMPT_RESPUESTA},
+            [{"role": "system", "content": PROMPT_RESPUESTA + ("" if historial else AVISO_PRIMER_MENSAJE)},
              *historial,
              {"role": "user", "content": f"Fragmentos:\n\n{contexto}\n\nPregunta: {pregunta}"}],
             temperatura=0.3,
@@ -478,13 +644,18 @@ def preguntar():
                         "Intenta de nuevo; si se repite, prueba otro modelo."}), 502
 
     # 5. Validar las citas: solo se muestran fuentes que de verdad se entregaron al modelo
+    texto, datos_panel = separar_panel(texto)
+    panel = construir_panel(pregunta, fragmentos, datos_panel)
     texto, citados = validar_citas(limpiar_redaccion(texto), len(fragmentos))
     if not citados:
-        return jsonify({"ok": True, "modelo": modelo, "respuesta": texto + NOTA_SIN_CITAS, "fuentes": []})
+        return jsonify({"ok": True, "modelo": modelo, "respuesta": texto + NOTA_SIN_CITAS,
+                        "fuentes": [], "panel": panel})
 
     print(f"[FireSpace] Pregunta respondida en {time.perf_counter() - inicio:.1f} s", flush=True)
+    # Las fuentes en las que se basa el panel también se listan, aunque el texto no las cite
+    citados = sorted(set(citados) | {n for b in panel["bloques"] for n in b["citas"]})
     fuentes = agrupar_fuentes(fragmentos, citados)
-    return jsonify({"ok": True, "modelo": modelo, "respuesta": texto, "fuentes": fuentes})
+    return jsonify({"ok": True, "modelo": modelo, "respuesta": texto, "fuentes": fuentes, "panel": panel})
 
 
 if __name__ == "__main__":
