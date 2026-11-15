@@ -73,6 +73,9 @@
         </div>
 
         <div class="dash__grid">
+          <!-- Tablero sobre el tema, diseñado por la IA en el servidor (campo "panel" de /api/preguntar) -->
+          <section class="panel-ia completa" id="panelIA" hidden aria-live="polite"></section>
+
           <!-- Fuentes reales citadas por ApiGx -->
           <div class="ancha">
             {{ grafica('dFuentes', 'Documentos citados',

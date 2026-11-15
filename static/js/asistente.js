@@ -4,8 +4,11 @@
      - POST /api/preguntar con {pregunta, historial}
      - memoria del último intercambio en sessionStorage
      - fuentes citadas con enlace al documento original
-   Lo nuevo es sólo visual: chat, sugerencias y un dashboard que se arma
-   con las fuentes, experimentos y combustibles de la conversación.
+   Además:
+     - el tablero "panel" que diseña la IA en el servidor (campo `panel`
+       de /api/preguntar: {titulo, bloques}) se dibuja arriba del dashboard
+       y se recuerda en sessionStorage (firespace_panel)
+     - debajo, gráficas de las fuentes, experimentos y combustibles de la conversación.
    ===================================================================== */
 (function () {
   "use strict";
@@ -15,6 +18,7 @@
   // (aunque cambies a Inicio o Simulación) y se borra al cerrarla.
   const CLAVE_MEMORIA = "firespace_ultimo_turno";
   const CLAVE_DASHBOARD = "firespace_dashboard";
+  const CLAVE_PANEL = "firespace_panel";
 
   const raiz = document.getElementById("asistente");
   const mensajes = document.getElementById("mensajes");
@@ -41,6 +45,24 @@
   }
 
   let ultimoTurno = cargarUltimoTurno(); // {pregunta, respuesta, fuentes} o null
+  let ultimoPanel = leerPanel();          // {titulo, bloques} o null
+
+  function leerPanel() {
+    try {
+      const p = JSON.parse(sessionStorage.getItem(CLAVE_PANEL));
+      // Un panel guardado con el formato anterior (sin "bloques") se descarta.
+      return p && Array.isArray(p.bloques) ? p : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function guardarPanel(panel) {
+    try {
+      if (panel) sessionStorage.setItem(CLAVE_PANEL, JSON.stringify(panel));
+      else sessionStorage.removeItem(CLAVE_PANEL);
+    } catch (e) { /* sin memoria del navegador: solo dura en esta página */ }
+  }
 
   function historialParaServidor() {
     if (!ultimoTurno) return [];
@@ -254,6 +276,13 @@
         mostrarRespuesta(cuerpo, datos.respuesta, fuentes);
         ultimoTurno = { pregunta, respuesta: datos.respuesta, fuentes };
         guardarUltimoTurno(ultimoTurno);
+
+        // Solo las búsquedas de información traen panel; si no trae, se queda el anterior.
+        if (datos.panel) {
+          ultimoPanel = datos.panel;
+          guardarPanel(ultimoPanel);
+          mostrarPanel(ultimoPanel);
+        }
         registrarEnDashboard(pregunta, datos.respuesta, fuentes);
       } else {
         // Los errores se muestran, pero no reemplazan a la pregunta anterior en la memoria.
@@ -272,6 +301,9 @@
   function nuevaConversacion() {
     ultimoTurno = null;
     guardarUltimoTurno(null);
+    ultimoPanel = null;
+    guardarPanel(null);
+    mostrarPanel(null);
     reiniciarDashboard();
     mensajes.replaceChildren();
     raiz.classList.remove("con-chat", "dash-abierto");
@@ -383,16 +415,23 @@
 
   function redimensionarGraficas() {
     Object.values(graficas).forEach((g) => g && g.resize());
+    graficasPanel.forEach((g) => g.resize());
   }
 
   const recortar = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
   function pintarDashboard() {
     if (typeof Chart === "undefined") return;
-    const hayDatos = Object.keys(dash.citas).length || Object.keys(dash.experimentos).length || dash.combustibles.length;
+    const hayConversacion = Object.keys(dash.citas).length || Object.keys(dash.experimentos).length || dash.combustibles.length;
+    const hayDatos = hayConversacion || !!ultimoPanel;
     document.getElementById("dashVacio").hidden = !!hayDatos;
     document.querySelector(".dash__grid").hidden = !hayDatos;
-    if (!hayDatos) return;
+    // Las gráficas de la conversación sólo se muestran cuando tienen datos.
+    ["dFuentes", "dOrigen", "dExperimentos"].forEach((id) => {
+      const fig = document.getElementById(id).closest(".grafica");
+      (fig.parentElement.classList.contains("ancha") ? fig.parentElement : fig).hidden = !hayConversacion;
+    });
+    if (!hayConversacion) return;
 
     // 1) Documentos citados
     const docs = Object.entries(dash.citas).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -432,6 +471,210 @@
     });
 
     pintarCombustibles();
+  }
+
+
+  /* =====================================================================
+     PANEL DE LA IA (tablero sobre el tema que diseña el servidor)
+     Cada bloque se dibuja con textContent: lo que manda la IA nunca se
+     interpreta como HTML.
+     ===================================================================== */
+  const panelIA = document.getElementById("panelIA");
+  let graficasPanel = []; // gráficas activas del panel, para borrarlas al cambiar de panel
+
+  function el(etiqueta, texto, clase) {
+    const nodo = document.createElement(etiqueta);
+    if (texto !== undefined && texto !== null) nodo.textContent = texto;
+    if (clase) nodo.className = clase;
+    return nodo;
+  }
+
+  function formatear(valor) {
+    return Number.isInteger(valor) ? String(valor) : valor.toLocaleString("es-MX", { maximumFractionDigits: 3 });
+  }
+
+  const DIBUJAR = {
+    kpis(b, caja) {
+      const rejilla = el("div", null, "pia-kpis");
+      for (const i of b.items) {
+        const kpi = el("div", null, "pia-kpi");
+        if (i.icono) kpi.appendChild(el("div", i.icono, "pia-kpi__icono"));
+        kpi.appendChild(el("div", i.valor, "pia-kpi__valor"));
+        kpi.appendChild(el("div", i.titulo, "pia-kpi__titulo"));
+        if (i.detalle) kpi.appendChild(el("div", i.detalle, "pia-kpi__detalle"));
+        rejilla.appendChild(kpi);
+      }
+      caja.appendChild(rejilla);
+    },
+
+    pasos(b, caja) {
+      const lista = el("ol", null, "pia-pasos");
+      for (const i of b.items) {
+        const li = el("li");
+        li.appendChild(el("b", i.titulo));
+        if (i.detalle) li.appendChild(el("div", i.detalle));
+        lista.appendChild(li);
+      }
+      caja.appendChild(lista);
+    },
+
+    comparacion(b, caja) {
+      const opciones = el("div", null, "pia-comparacion__opciones");
+      const detalle = el("div", null, "pia-comparacion__detalle");
+      const botones = [];
+      const seleccionar = (indice) => {
+        botones.forEach((bt, k) => bt.setAttribute("aria-pressed", k === indice));
+        const item = b.items[indice];
+        detalle.replaceChildren(el("h4", item.nombre));
+        for (const d of item.detalles) {
+          const p = el("p");
+          p.appendChild(el("b", d.campo + ": "));
+          p.appendChild(document.createTextNode(d.valor));
+          detalle.appendChild(p);
+        }
+      };
+      b.items.forEach((item, indice) => {
+        const bt = el("button", null, "pia-comparacion__opcion");
+        bt.type = "button";
+        bt.appendChild(el("b", item.nombre));
+        if (item.resumen) bt.appendChild(el("span", item.resumen));
+        bt.addEventListener("click", () => seleccionar(indice));
+        botones.push(bt);
+        opciones.appendChild(bt);
+      });
+      caja.append(opciones, detalle);
+      seleccionar(0);
+    },
+
+    lista(b, caja) {
+      for (const i of b.items) {
+        const fila = el("div", null, "pia-lista");
+        fila.appendChild(el("span", i.icono || "•", "pia-lista__icono"));
+        const texto = el("div");
+        if (i.titulo) texto.appendChild(el("b", i.titulo));
+        if (i.texto) texto.appendChild(el("div", i.texto));
+        fila.appendChild(texto);
+        caja.appendChild(fila);
+      }
+    },
+
+    linea_tiempo(b, caja) {
+      const linea = el("div", null, "pia-tiempo");
+      for (const i of b.items) {
+        const evento = el("div");
+        evento.appendChild(el("b", i.fecha + " · " + i.titulo));
+        if (i.texto) evento.appendChild(el("div", i.texto));
+        linea.appendChild(evento);
+      }
+      caja.appendChild(linea);
+    },
+
+    dato(b, caja) {
+      caja.classList.add("pia-dato");
+      caja.appendChild(el("div", (b.icono ? b.icono + " " : "✨ ") + b.texto));
+    },
+
+    tabla(b, caja) {
+      const contenedor = el("div", null, "pia-tabla");
+      const tabla = el("table");
+      const encabezado = el("tr");
+      b.columnas.forEach((c) => encabezado.appendChild(el("th", c)));
+      tabla.appendChild(encabezado);
+      for (const fila of b.filas) {
+        const tr = el("tr");
+        fila.forEach((celda) => tr.appendChild(el("td", celda)));
+        tabla.appendChild(tr);
+      }
+      contenedor.appendChild(tabla);
+      caja.appendChild(contenedor);
+    },
+
+    grafica(b, caja) {
+      if (typeof Chart === "undefined") {
+        // Respaldo sin Chart.js: barras simples con la primera serie
+        const serie = b.series[0];
+        const maximo = Math.max(...serie.valores.map(Math.abs)) || 1;
+        b.etiquetas.forEach((etiqueta, k) => {
+          const fila = el("div", null, "pia-barra");
+          fila.appendChild(el("div", etiqueta + ": " + formatear(serie.valores[k]) + " " + (b.unidad || "")));
+          const fondo = el("div", null, "pia-barra__fondo");
+          const relleno = el("div", null, "pia-barra__relleno");
+          relleno.style.width = Math.max(2, (100 * Math.abs(serie.valores[k])) / maximo) + "%";
+          fondo.appendChild(relleno);
+          fila.appendChild(fondo);
+          caja.appendChild(fila);
+        });
+        return;
+      }
+      const contenedor = el("div", null, "grafica__lienzo");
+      const lienzo = el("canvas");
+      contenedor.appendChild(lienzo);
+      caja.appendChild(contenedor);
+
+      const circular = b.subtipo === "dona";
+      const tipo = { barras: "bar", barras_horizontales: "bar", lineas: "line", dona: "doughnut", radar: "radar" }[b.subtipo] || "bar";
+      const series = circular ? b.series.slice(0, 1) : b.series;
+      const datasets = series.map((s, k) => ({
+        label: s.nombre || b.unidad || "",
+        data: s.valores,
+        backgroundColor: circular ? PALETA : PALETA[k % PALETA.length] + (tipo === "radar" || tipo === "line" ? "44" : ""),
+        borderColor: circular ? "#0b1030" : PALETA[k % PALETA.length],
+        borderWidth: 2,
+        borderRadius: tipo === "bar" ? 4 : 0,
+        fill: tipo === "line",
+        tension: 0.35
+      }));
+      const opciones = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: circular || series.length > 1, position: circular ? "bottom" : "top" } }
+      };
+      if (b.subtipo === "barras_horizontales") opciones.indexAxis = "y";
+      if (tipo === "radar") {
+        opciones.scales = { r: { angleLines: { color: "rgba(255,255,255,.08)" }, grid: { color: "rgba(255,255,255,.08)" }, pointLabels: { color: "#b9b8d3" }, ticks: { backdropColor: "transparent" } } };
+      } else if (!circular && b.unidad) {
+        const eje = b.subtipo === "barras_horizontales" ? "x" : "y";
+        opciones.scales = { [eje]: { title: { display: true, text: b.unidad } } };
+      }
+      graficasPanel.push(new Chart(lienzo, { type: tipo, data: { labels: b.etiquetas, datasets }, options: opciones }));
+    }
+  };
+
+  function mostrarPanel(datos) {
+    graficasPanel.forEach((g) => g.destroy());
+    graficasPanel = [];
+    panelIA.replaceChildren();
+    if (!datos) {
+      panelIA.hidden = true;
+      return;
+    }
+    panelIA.hidden = false;
+    document.getElementById("dashVacio").hidden = true;
+    document.querySelector(".dash__grid").hidden = false;
+    panelIA.appendChild(el("h3", datos.titulo, "panel-ia__titulo"));
+
+    if (!datos.bloques || !datos.bloques.length) {
+      panelIA.appendChild(el("p", "No se pudo generar el tablero para esta consulta. Intenta preguntar de otra forma.", "aviso-demo"));
+      return;
+    }
+    const rejilla = el("div", null, "panel-ia__bloques");
+    panelIA.appendChild(rejilla);
+    for (const bloque of datos.bloques) {
+      const dibujar = DIBUJAR[bloque.tipo];
+      if (!dibujar) continue;
+      const caja = el("div", null, "grafica pia-bloque pia-bloque--" + bloque.tipo);
+      if (bloque.titulo) caja.appendChild(el("div", bloque.titulo, "grafica__titulo"));
+      try {
+        rejilla.appendChild(caja); // primero en el DOM: Chart.js necesita el tamaño real
+        dibujar(bloque, caja);
+        if (Array.isArray(bloque.citas) && bloque.citas.length) {
+          caja.appendChild(el("p", "Fuentes: " + bloque.citas.map((n) => "[" + n + "]").join(" "), "pia-citas"));
+        }
+      } catch (e) {
+        caja.remove(); // si un bloque viene mal formado, se omite sin romper el resto del panel
+      }
+    }
+    panelIA.appendChild(el("p", "Tablero generado por IA a partir de las fuentes de la respuesta.", "aviso-demo"));
   }
 
   /* ---------- índice ilustrativo para combustibles ---------- */
@@ -554,5 +797,6 @@
     agregarPregunta(ultimoTurno.pregunta);
     mostrarRespuesta(agregarRespuestaVacia(), ultimoTurno.respuesta, ultimoTurno.fuentes || []);
   }
+  if (ultimoPanel) mostrarPanel(ultimoPanel);
   pintarDashboard();
 })();
