@@ -1,0 +1,16 @@
+{# Mascota: usa static/img/apigx.png si existe; si no, el SVG provisional #}
+{% macro mascota(clase='') -%}
+  <img class="mascota {{ clase }}" src="{{ url_for('static', filename='img/apigx.png') }}"
+       onerror="this.onerror=null;this.src='{{ url_for('static', filename='img/apigx.svg') }}'" alt="ApiGx">
+{%- endmacro %}
+
+{# Tarjeta de gráfica con leyenda de interpretación #}
+{% macro grafica(id, titulo, leyenda, clase='') -%}
+  <figure class="grafica {{ clase }}">
+    <figcaption class="grafica__titulo">{{ titulo }}
+      <button class="grafica__ayuda" type="button" aria-label="Cómo interpretar" data-ayuda>?</button>
+    </figcaption>
+    <div class="grafica__lienzo"><canvas id="{{ id }}"></canvas></div>
+    <p class="grafica__leyenda"><strong>Cómo leerla:</strong> {{ leyenda }}</p>
+  </figure>
+{%- endmacro %}

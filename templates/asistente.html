@@ -1,156 +1,129 @@
 {% extends "base.html" %}
+{% from '_macros.html' import mascota, grafica %}
 
-{% block titulo %}Asistente IA · FireSpace{% endblock %}
+{% block titulo %}Asistente IA · FireSpace GX{% endblock %}
+
+{% set icono_filtro %}<svg viewBox="0 0 24 24"><path d="M3 6h7M14 6h7M3 12h3M10 12h11M3 18h11M18 18h3"/><circle cx="12" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>{% endset %}
+{% set icono_enviar %}<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% endset %}
+
+{# Los modos muestran preguntas sugeridas de cada tipo (no cambian cómo responde el servidor) #}
+{% set modos %}
+  <button class="modo" type="button" data-modo="consultar" aria-pressed="true">Consultar<small>Preguntas abiertas sobre combustión</small></button>
+  <button class="modo" type="button" data-modo="investigaciones" aria-pressed="false">Investigaciones<small>Experimentos y estudios de NASA</small></button>
+  <button class="modo" type="button" data-modo="resultados" aria-pressed="false">Resultados<small>Mediciones y conclusiones</small></button>
+{% endset %}
 
 {% block contenido %}
-  <h1>Asistente IA</h1>
+<div class="asistente" id="asistente">
 
-  <input id="pregunta" type="text" size="60" maxlength="800" placeholder="Escribe tu pregunta...">
-  <button id="enviar">Enviar</button>
-  <button id="nueva" type="button">Nueva conversación</button>
+  <!-- =============== ESTADO 1: bienvenida =============== -->
+  <section class="bienvenida">
+    {{ mascota() }}
+    <h1>¿Por dónde empezamos?</h1>
 
-  <p id="pregunta-mostrada" hidden><b>Tu pregunta:</b> <span id="pregunta-texto"></span></p>
+    <form class="menu-wrap" data-form-consulta>
+      <div class="pill">
+        <button class="pill__filtro" type="button" aria-label="Ver tipos de pregunta" data-abrir-modos>{{ icono_filtro }}</button>
+        <input type="text" name="pregunta" maxlength="800" placeholder="Preguntar a ApiGx" autocomplete="off" aria-label="Pregunta para ApiGx">
+        <button class="pill__enviar" type="submit" aria-label="Enviar">{{ icono_enviar }}</button>
+      </div>
+    </form>
 
-  <h3>Respuesta:</h3>
-  <pre id="respuesta" style="white-space: pre-wrap;"></pre>
+    <div class="modos" role="group" aria-label="Tipo de pregunta">{{ modos }}</div>
+    <div class="ejemplos" data-ejemplos></div>
+  </section>
 
-  <h3 id="titulo-fuentes" hidden>Fuentes:</h3>
-  <ul id="fuentes"></ul>
+  <!-- =============== ESTADO 2/3: chat + dashboard =============== -->
+  <section class="sesion">
+    <div class="chat">
+      <header class="chat__cab">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="chat__titulo" type="button" id="nueva" title="Nueva conversación">
+            <span id="tituloChat">Nueva consulta</span>
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button class="chip chat__toggle-movil" type="button" data-toggle-dash>Ver dashboard</button>
+        </div>
+        <div class="chat__linea"></div>
+      </header>
+
+      <div class="chat__mensajes" id="mensajes" aria-live="polite"></div>
+
+      <form class="chat__entrada" data-form-consulta>
+        <div class="menu-modos" hidden>
+          <div role="group" aria-label="Tipo de pregunta">{{ modos }}</div>
+          <div class="ejemplos ejemplos--menu" data-ejemplos></div>
+        </div>
+        <div class="pill">
+          <button class="pill__filtro" type="button" aria-label="Ver tipos de pregunta" data-abrir-modos>{{ icono_filtro }}</button>
+          <input type="text" name="pregunta" maxlength="800" placeholder="Preguntar a ApiGx" autocomplete="off" aria-label="Pregunta para ApiGx">
+          <button class="pill__enviar" type="submit" aria-label="Enviar">{{ icono_enviar }}</button>
+        </div>
+      </form>
+    </div>
+
+    <aside class="dash" aria-label="Dashboard generado con la conversación">
+      <button class="dash__toggle" type="button" data-toggle-dash aria-label="Expandir dashboard">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m13.5 8-4 4 4 4"/></svg>
+      </button>
+      <div class="dash__cuerpo">
+        <div class="dash__cab">
+          <h2 class="titulo-dash">Dashboard</h2>
+          <p class="dash__fuente">Se construye con las fuentes y temas de esta conversación</p>
+        </div>
+
+        <div class="dash__grid">
+          <!-- Fuentes reales citadas por ApiGx -->
+          <div class="ancha">
+            {{ grafica('dFuentes', 'Documentos citados',
+              'cada barra es un documento de la biblioteca de FireSpace y su largo es cuántas veces lo citó ApiGx en esta conversación. Los más citados son los que más sostienen las respuestas: ábrelos en la lista de fuentes para verificar.') }}
+          </div>
+
+          {{ grafica('dOrigen', 'Origen de las fuentes',
+            'proporción de citas según el repositorio de NASA del que viene cada documento (PSI, NASA Combustion Science o la lista oficial del reto).') }}
+
+          {{ grafica('dExperimentos', 'Experimentos mencionados',
+            'cuántas veces aparece cada experimento (ACME, FLEX, SAFFIRE…) en tus preguntas y en las respuestas. Sirve para ver en qué investigaciones se está centrando la conversación.') }}
+
+          <!-- Combustibles: aparece cuando se mencionan -->
+          <div class="controles" id="panelCombustibles" hidden>
+            <h3>Combustibles mencionados</h3>
+            <div class="controles__chips" id="chipsCombustibles"></div>
+            <label class="deslizador">Cantidad de combustible <output id="oCantidad">50%</output>
+              <input type="range" id="rCantidad" min="0" max="100" value="50">
+            </label>
+            <label class="deslizador">Oxígeno en cabina <output id="oOxigeno">21%</output>
+              <input type="range" id="rOxigeno" min="15" max="40" value="21">
+            </label>
+            <div class="estado-riesgo" id="estadoRiesgo">—</div>
+            <p class="aviso-demo" style="margin:8px 0 0">Índice ilustrativo calculado con propiedades de referencia aproximadas; no proviene de las fuentes citadas.</p>
+          </div>
+
+          <div class="ancha" data-solo-combustibles hidden>
+            {{ grafica('dCurva', 'Riesgo según la cantidad',
+              'el eje horizontal es la cantidad de combustible y el vertical un índice de riesgo ilustrativo. La línea punteada marca la cantidad elegida. Cuando una curva entra en la franja roja, ese compuesto ya representa un peligro con esa cantidad y ese oxígeno.') }}
+          </div>
+
+          <div data-solo-combustibles hidden>
+            <figure class="grafica">
+              <figcaption class="grafica__titulo">Rango de inflamabilidad
+                <button class="grafica__ayuda" type="button" aria-label="Cómo interpretar" data-ayuda>?</button>
+              </figcaption>
+              <div class="rangos" id="dRangos"></div>
+              <p class="grafica__leyenda"><strong>Cómo leerla:</strong> la barra va del límite inferior al superior de
+                inflamabilidad en aire (% vol). Dentro de ese tramo la mezcla puede encenderse.</p>
+            </figure>
+          </div>
+        </div>
+
+        <p class="dash__vacio" id="dashVacio">Haz una pregunta y aquí aparecerán las gráficas de la conversación.</p>
+      </div>
+    </aside>
+  </section>
+</div>
 {% endblock %}
 
 {% block scripts %}
-  <script>
-    // ---------- Memoria: solo el intercambio anterior ----------
-    // Se guarda en sessionStorage: dura mientras la pestaña esté abierta
-    // (aunque cambies a Inicio o Simulación) y se borra al cerrarla.
-    const CLAVE_MEMORIA = "firespace_ultimo_turno";
-
-    const input = document.getElementById("pregunta");
-    const boton = document.getElementById("enviar");
-    const botonNueva = document.getElementById("nueva");
-    const preguntaMostrada = document.getElementById("pregunta-mostrada");
-    const preguntaTexto = document.getElementById("pregunta-texto");
-    const salida = document.getElementById("respuesta");
-    const tituloFuentes = document.getElementById("titulo-fuentes");
-    const listaFuentes = document.getElementById("fuentes");
-
-    function cargarUltimoTurno() {
-      try {
-        const turno = JSON.parse(sessionStorage.getItem(CLAVE_MEMORIA));
-        return turno && typeof turno.pregunta === "string" ? turno : null;
-      } catch (e) {
-        return null;
-      }
-    }
-
-    function guardarUltimoTurno(turno) {
-      try {
-        if (turno) sessionStorage.setItem(CLAVE_MEMORIA, JSON.stringify(turno));
-        else sessionStorage.removeItem(CLAVE_MEMORIA);
-      } catch (e) {
-        // Si el navegador no permite guardar, el seguimiento solo dura en esta página.
-      }
-    }
-
-    let ultimoTurno = cargarUltimoTurno(); // {pregunta, respuesta, fuentes} o null
-
-    function historialParaServidor() {
-      if (!ultimoTurno) return [];
-      return [
-        { rol: "usuario", texto: ultimoTurno.pregunta },
-        { rol: "asistente", texto: ultimoTurno.respuesta }
-      ];
-    }
-
-    // ---------- Mostrar en pantalla ----------
-
-    function mostrarPregunta(pregunta) {
-      preguntaTexto.textContent = pregunta;
-      preguntaMostrada.hidden = !pregunta;
-    }
-
-    function mostrarFuentes(fuentes) {
-      listaFuentes.replaceChildren();
-      tituloFuentes.hidden = fuentes.length === 0;
-      for (const f of fuentes) {
-        const li = document.createElement("li");
-        li.appendChild(document.createTextNode("[" + f.id + "] " + f.fuente + " — "));
-        if (typeof f.url === "string" && f.url.startsWith("https://")) {
-          const a = document.createElement("a");
-          a.href = f.url;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.textContent = f.titulo;
-          li.appendChild(a);
-        } else {
-          li.appendChild(document.createTextNode(f.titulo));
-        }
-        listaFuentes.appendChild(li);
-      }
-    }
-
-    // ---------- Envío de preguntas ----------
-
-    async function enviar() {
-      const pregunta = input.value.trim();
-      if (!pregunta || boton.disabled) return;
-
-      boton.disabled = true;
-      input.value = "";
-      mostrarPregunta(pregunta);
-      salida.textContent = "Pensando...";
-      mostrarFuentes([]);
-
-      try {
-        const r = await fetch("/api/preguntar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pregunta, historial: historialParaServidor() })
-        });
-
-        let datos;
-        try {
-          datos = await r.json();
-        } catch (e) {
-          datos = { ok: false, error: "el servidor respondió algo inesperado (código " + r.status + ")." };
-        }
-
-        if (datos.ok) {
-          const fuentes = datos.fuentes || [];
-          salida.textContent = datos.respuesta;
-          mostrarFuentes(fuentes);
-          ultimoTurno = { pregunta, respuesta: datos.respuesta, fuentes };
-          guardarUltimoTurno(ultimoTurno);
-        } else {
-          // Los errores se muestran, pero no reemplazan a la pregunta anterior en la memoria.
-          salida.textContent = "Error: " + datos.error;
-        }
-      } catch (e) {
-        salida.textContent = "Error: no se pudo conectar con el servidor.";
-      } finally {
-        boton.disabled = false;
-        input.focus();
-      }
-    }
-
-    function nuevaConversacion() {
-      ultimoTurno = null;
-      guardarUltimoTurno(null);
-      mostrarPregunta("");
-      salida.textContent = "";
-      mostrarFuentes([]);
-      input.focus();
-    }
-
-    boton.addEventListener("click", enviar);
-    botonNueva.addEventListener("click", nuevaConversacion);
-    input.addEventListener("keydown", e => { if (e.key === "Enter") enviar(); });
-
-    // Al volver a esta página, se muestra la última respuesta de esta pestaña.
-    if (ultimoTurno) {
-      mostrarPregunta(ultimoTurno.pregunta);
-      salida.textContent = ultimoTurno.respuesta;
-      mostrarFuentes(ultimoTurno.fuentes || []);
-    }
-  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/asistente.js') }}"></script>
 {% endblock %}
