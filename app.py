@@ -66,11 +66,11 @@ PROMPT_RESPUESTA = """Eres el asistente científico de FireSpace, especializado 
 Reglas obligatorias:
 1. Todo dato concreto (cifras, resultados, condiciones de prueba, nombres y objetivos de experimentos, fechas, hechos históricos y conclusiones de NASA) debe venir de los fragmentos y llevar su cita entre corchetes, por ejemplo [2] o [1][3].
 2. Puedes usar conocimiento científico general para explicar conceptos básicos, conectar ideas, comparar, razonar o proponer, como lo haría un buen profesor. Esas partes no llevan cita y deben presentarse como explicación o razonamiento, nunca como un resultado de NASA.
-3. Nunca inventes datos, cifras, resultados, fechas, autores, publicaciones ni enlaces. Si la pregunta pide un dato que no aparece en los fragmentos, dilo con claridad.
+3. Nunca inventes datos, cifras, resultados, fechas, autores, publicaciones ni enlaces. Si la pregunta pide un dato que no aparece en los fragmentos, dilo con naturalidad, por ejemplo: "No tengo información sobre...".
 4. Si la pregunta parte de una idea incorrecta, corrígela con base en las fuentes.
 5. Adapta el tono: si la pregunta es casual o de divulgación, explica de forma amigable y sencilla para cualquier persona; si es técnica, responde con la precisión que esperaría un investigador o ingeniero aeroespacial. La extensión debe ser proporcional a la pregunta.
 6. Responde en español; los fragmentos están en inglés: tradúcelos con fidelidad.
-7. Nunca uses la palabra "fragmentos": si necesitas mencionarlos, di "las fuentes". No comentes las fuentes que no usaste. Escribe en texto plano, sin Markdown (nada de asteriscos ni almohadillas); para listas usa guiones."""
+7. Escribe como si explicaras directamente, con tus propias palabras. Nunca menciones de dónde sacas la información con frases como "las fuentes", "los fragmentos", "los documentos", "el texto" o "la información proporcionada": las citas entre corchetes ya indican el origen y el usuario no sabe qué documentos recibiste. Escribe en texto plano, sin Markdown (nada de asteriscos ni almohadillas); para listas usa guiones."""
 
 PROMPT_META = """Eres el asistente de FireSpace. Conversa de forma natural, cálida y breve, respondiendo exactamente a lo que el usuario dice o pregunta.
 Reglas:
@@ -293,11 +293,13 @@ def validar_citas(texto, total):
 
 
 def limpiar_redaccion(texto):
-    """Respaldo por si la IA menciona "fragmentos", un detalle interno que el usuario no conoce."""
-    texto = re.sub(r"\b([Ll])os fragmentos( proporcionados| de la NASA| de NASA)?\b",
-                   lambda m: ("L" if m.group(1) == "L" else "l") + "as fuentes", texto)
-    texto = re.sub(r"\b([Ee])l fragmento\b", lambda m: m.group(1).replace("E", "L").replace("e", "l") + "a fuente", texto)
-    return texto
+    """Respaldo por si la IA menciona sus fuentes internas ("según las fuentes...").
+    Quita esas muletillas al inicio de las frases; las citas [n] ya indican el origen."""
+    referencia = (r"(?:las fuentes|los fragmentos|los documentos|los textos|la información "
+                  r"(?:proporcionada|disponible))(?: (?:de (?:la )?NASA|proporcionad[ao]s|consultad[ao]s|disponibles))?")
+    muletilla = re.compile(r"(^|(?<=[.!?]\s)|(?<=\n))(?:Según|De acuerdo con|Con base en|Basándome en) "
+                           + referencia + r",?\s+(\w)", re.IGNORECASE)
+    return muletilla.sub(lambda m: m.group(1) + m.group(2).upper(), texto)
 
 
 def agrupar_fuentes(fragmentos, citados):
