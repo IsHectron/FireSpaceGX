@@ -35,7 +35,19 @@ MAX_TOKENS_RESPUESTA = 2200     # incluye el diseño del panel
 # (la pregunta anterior y su respuesta), para entender preguntas como "¿y eso por qué?".
 MAX_MENSAJES_HISTORIAL = 2        # 1 pregunta + 1 respuesta
 MAX_CARACTERES_POR_MENSAJE = 700
-PALABRAS_PREGUNTA_CORTA = 8       # preguntas así de cortas suelen depender de la anterior ("¿y eso por qué?")
+PALABRAS_PREGUNTA_CORTA = 4       # preguntas así de cortas suelen depender de la anterior ("¿y eso por qué?")
+
+# Palabras que indican que la pregunta se refiere a algo dicho antes
+PATRON_SEGUIMIENTO = re.compile(
+    r"^y\b|\b(eso|esto|esa|ese|esos|esas|este|esta|estos|estas|ello|ahi|alli|aquello|"
+    r"tambien|entonces|lo anterior|lo mismo|mismo experimento|dicho experimento)\b"
+)
+
+
+def depende_de_la_anterior(pregunta):
+    """True si la pregunta parece continuar la anterior ("¿y eso por qué?", "¿qué materiales usó ese experimento?")."""
+    texto = biblioteca.sin_acentos(pregunta.lower()).strip(" ¿?¡!.,")
+    return len(texto.split()) <= PALABRAS_PREGUNTA_CORTA or bool(PATRON_SEGUIMIENTO.search(texto))
 
 # Razonamiento interno del modelo ("pensar" antes de responder). "none" lo desactiva:
 # respuestas más rápidas y sin el riesgo de que el modelo gaste todos sus tokens pensando.
@@ -595,7 +607,7 @@ def preguntar():
     # 2. Buscar en la biblioteca (palabras en inglés + la pregunta original)
     print(f"[FireSpace] Palabras de búsqueda: {claves or '(ninguna)'}", flush=True)
     texto_busqueda = f"{claves} {pregunta}"
-    if anterior and len(pregunta.split()) <= PALABRAS_PREGUNTA_CORTA:
+    if anterior and depende_de_la_anterior(pregunta):
         texto_busqueda += f" {anterior}"  # "¿y eso por qué?" se busca junto con la pregunta anterior
     fragmentos = biblioteca.buscar(texto_busqueda, FRAGMENTOS_POR_PREGUNTA)
     print(f"[FireSpace] Fragmentos encontrados: {len(fragmentos)}", flush=True)
