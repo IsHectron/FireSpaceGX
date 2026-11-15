@@ -298,11 +298,20 @@ def ficha_del_asistente():
     ])
 
 
+AVISO_PRIMER_MENSAJE = (
+    "\n\nIMPORTANTE: este es el PRIMER mensaje de la conversación. No hubo mensajes anteriores: "
+    "no digas ni insinúes que ya hablaron de algo, ni retomes temas \"de antes\"."
+)
+
+
 def responder_conversacion(pregunta, historial=()):
     """Respuesta natural a saludos o preguntas sobre el asistente, basada en la ficha."""
+    sistema = PROMPT_META.format(ficha=ficha_del_asistente())
+    if not historial:
+        sistema += AVISO_PRIMER_MENSAJE  # evita que la IA invente una conversación previa
     try:
         texto, modelo = generar(
-            [{"role": "system", "content": PROMPT_META.format(ficha=ficha_del_asistente())},
+            [{"role": "system", "content": sistema},
              *historial,
              {"role": "user", "content": pregunta}],
             temperatura=0.4,
@@ -428,6 +437,8 @@ def preguntar():
     inicio = time.perf_counter()
     historial = limpiar_historial(datos.get("historial"))
     anterior = ultima_pregunta(historial)
+    print(f"[FireSpace] Mensajes anteriores recibidos: {len(historial)}"
+          + (f" (pregunta anterior: {anterior[:60]!r})" if anterior else " (primer mensaje)"), flush=True)
 
     # 1. ¿Es una pregunta sobre el asistente o una pregunta para las fuentes?
     try:
@@ -458,7 +469,7 @@ def preguntar():
     )
     try:
         texto, modelo = generar(
-            [{"role": "system", "content": PROMPT_RESPUESTA},
+            [{"role": "system", "content": PROMPT_RESPUESTA + ("" if historial else AVISO_PRIMER_MENSAJE)},
              *historial,
              {"role": "user", "content": f"Fragmentos:\n\n{contexto}\n\nPregunta: {pregunta}"}],
             temperatura=0.3,
