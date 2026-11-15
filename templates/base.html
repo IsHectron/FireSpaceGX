@@ -21,6 +21,14 @@
     <a class="sidebar__logo" href="{{ url_for('inicio') }}" title="Inicio">FireSpace GX</a>
 
     <nav class="sidebar__nav">
+      <a class="nav-item {% if request.endpoint == 'inicio' %}activo{% endif %}" href="{{ url_for('inicio') }}" title="Inicio">
+        <span class="nav-item__icono">
+          <span class="icono-inicio">
+            <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5.5h4V20"/></svg>
+          </span>
+        </span>
+        <span class="nav-item__texto">Inicio</span>
+      </a>
       <a class="nav-item {% if request.endpoint == 'asistente' %}activo{% endif %}" href="{{ url_for('asistente') }}" title="Asistente IA (ApiGx)">
         <span class="nav-item__icono">{{ mascota('mascota--nav') }}</span>
         <span class="nav-item__texto">Apigx</span>

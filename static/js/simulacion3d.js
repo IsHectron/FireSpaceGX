@@ -4,9 +4,8 @@
  *  - Gravedad:  en 1 g la llama es alargada, en forma de gota.
  *               en 0 g (microgravedad) tiende a ser esférica, como
  *               se observa en los experimentos de combustión en la ISS.
- *  - Oxígeno:   más O2 -> llama más grande, más caliente y con el
- *               núcleo más azulado/blanco. Menos O2 -> más pequeña,
- *               tenue y anaranjada.
+ *  - Oxígeno:   más O2 -> llama más grande y más caliente.
+ *               Menos O2 -> más pequeña y menos caliente.
  *  - Tamaño:    escala general de la llama (1 a 10).
  *
  * ESCALA — 1 unidad = 1 cm (aprox.)
@@ -29,13 +28,13 @@
  *     caliente brilla como una brasa (~1000-1400 °C). Es la
  *     llama típica, luminosa y con humo, de combustión incompleta.
  *   - Azul: quimiluminiscencia de radicales CH* y C2* (~430 y
- *     516 nm). Aparece con combustión completa, poco hollín,
- *     mucho oxígeno y/o microgravedad. Por eso las llamas de la
- *     ISS y las de un mechero bien regulado se ven azules, aunque
- *     sean más calientes que una llama amarilla.
- *   Por eso el color aquí no es un degradado suave: hay regímenes
- *   (rojo -> naranja -> amarillo -> amarillo-blanco -> azul-blanco)
- *   según la temperatura máxima estimada.
+ *     516 nm). Domina cuando el combustible forma poco hollín
+ *     (por ejemplo, el metanol de FLEX: "very dim blue flame").
+ *   Por eso aquí el color NO sale de una lista de estados: el del hollín
+ *   se calcula con la ley de Planck (cuerpo negro) y las funciones de
+ *   color CIE 1931 para la temperatura de cada punto, y el azul es el de
+ *   la emisión de CH* (431 nm), pesado por lo poco o mucho hollín que
+ *   forma el combustible (ver "Color físico de la llama" más abajo).
  *
  * La llama se dibuja con 3 capas Mesh3d anidadas (exterior, media
  * e interior) + una nube de puntos Scatter3d que representa el
@@ -50,13 +49,14 @@
   var BASE_Z = 0.4; // la base de la llama queda 0,4 cm sobre el quemador
   var TEMP_MIN = 600; // °C, borde frío de la llama (para la escala de color)
   var TEMP_MAX = 1600; // °C, tope de la escala de color
-  var QUEMADOR_REF_CM = 0.6; // diámetro de referencia de la escala (cm)
+  var QUEMADOR_REF_CM = 0.6;
+  var HOLLIN_GENERICO = 0.6; // hidrocarburo genérico (sin compuesto elegido): llama con hollín // diámetro de referencia de la escala (cm)
   var QUEMADOR_MIN_CM = 0.2;
   var QUEMADOR_MAX_CM = 2.0;
 
   // ---------- Parámetros físicos (ilustrativos) ----------
 
-  function calcularParametros(gravedad, oxigeno, tamano, diametroQuemador) {
+  function calcularParametros(gravedad, oxigeno, tamano, diametroQuemador, mezcla) {
     // Diámetro del quemador (cm): lo pone el usuario; si falta o
     // es inválido, se usa la referencia de 0,6 cm.
     var diametro = parseFloat(diametroQuemador);
@@ -92,39 +92,12 @@
       forma = "Alargada en forma de gota — gravedad terrestre";
     }
 
-    // Régimen de color según la temperatura (ver comentario superior).
-    var color;
-    if (temperatura < 1080) {
-      color = {
-        nombre: "Rojo / naranja tenue",
-        explicacion:
-          "Hollín incandescente y combustión incompleta: llama tenue, con mucho hollín.",
-      };
-    } else if (temperatura < 1220) {
-      color = {
-        nombre: "Naranja",
-        explicacion:
-          "Hollín incandescente: llama luminosa típica, combustión todavía incompleta.",
-      };
-    } else if (temperatura < 1360) {
-      color = {
-        nombre: "Amarillo",
-        explicacion:
-          "Hollín muy caliente: llama brillante, empieza a quemar mejor.",
-      };
-    } else if (temperatura < 1480) {
-      color = {
-        nombre: "Amarillo-blanco, núcleo azul",
-        explicacion:
-          "Combustión casi completa: poco hollín y ya aparece el azul de CH* / C2* en el núcleo.",
-      };
-    } else {
-      color = {
-        nombre: "Azul-blanco",
-        explicacion:
-          "Combustión completa, casi sin hollín: domina el azul de la quimiluminiscencia (CH* / C2*).",
-      };
-    }
+    // Combustible: si el usuario eligió compuestos de PSI-68 (FLEX-2) se usa su
+    // tendencia relativa a formar hollín; si no, un hidrocarburo genérico.
+    mezcla = mezcla || { hollin: HOLLIN_GENERICO, nombre: "Hidrocarburo genérico" };
+
+    // Color: se CALCULA (ley de Planck + CIE 1931), no se elige de una lista de estados.
+    var color = describirColor(temperatura, mezcla.hollin);
 
     return {
       gravedad: gravedad,
@@ -140,6 +113,8 @@
       forma: forma,
       colorDominante: color.nombre,
       colorExplicacion: color.explicacion,
+      hollin: mezcla.hollin,
+      combustible: mezcla.nombre,
       baseZ: BASE_Z,
       // Exponente del perfil: desplaza el máximo grosor hacia
       // la base en gravedad terrestre y hacia el centro en 0 g.
@@ -173,26 +148,126 @@
     return p.parametros.radioMax * Math.pow(s, 0.65);
   }
 
-  // Escala de color ÚNICA, en °C reales (600-1600 °C).
-  // Al usar la temperatura en °C como valor de color (con cmin/cmax
-  // fijos), una llama fría nunca llega al azul y una caliente sí:
-  // el cambio de color con la temperatura se vuelve muy notorio.
-  //   600-900 °C: rojo oscuro -> rojo
-  //   900-1200 °C: naranja -> amarillo (hollín incandescente)
-  //   1200-1450 °C: amarillo-blanco
-  //   >1450 °C: azul-blanco (quimiluminiscencia, sin hollín)
-  function escalaTemperatura() {
+  // ---------- Color físico de la llama ----------
+  //
+  // Lo que se ve en una llama tiene dos orígenes (ver exp_flex.txt: el metanol
+  // "burns with a very dim blue flame (not much soot production)"):
+  //  1. Hollín incandescente: emite como un cuerpo negro. Su color se calcula
+  //     con la ley de Planck integrada con las funciones de igualación de color
+  //     CIE 1931 (ajuste analítico de Wyman, Sloan y Shirley, 2013) y se pasa a
+  //     sRGB. No hay una tabla de colores inventada: cada temperatura da su color.
+  //  2. Quimiluminiscencia de CH* (~431 nm) y C2* (~516 nm): el azul de la zona
+  //     de reacción, visible cuando hay poco hollín. Su color sale de esas longitudes de onda.
+  // El brillo de un cuerpo negro crece muchísimo con T; para poder mostrarlo se
+  // usa "exposición automática" (como una cámara) respecto a la zona más caliente
+  // y una compresión de brillo. Eso cambia el brillo en pantalla, no el tono.
+  var C2 = 1.4388e-2; // segunda constante de radiación (m·K)
+  var PUNTO_DRAPER_C = 525; // °C: por debajo, un sólido caliente casi no emite luz visible
+
+  function lobulo(l, mu, s1, s2) {
+    var t = (l - mu) / (l < mu ? s1 : s2);
+    return Math.exp(-0.5 * t * t);
+  }
+  function cmf(l) { // CIE 1931 2°, ajuste de Wyman et al. (2013)
     return [
-      [0, "#450a0a"],
-      [0.15, "#7f1d1d"],
-      [0.3, "#dc2626"],
-      [0.45, "#ea580c"],
-      [0.6, "#f59e0b"],
-      [0.72, "#facc15"],
-      [0.84, "#fef9c3"],
-      [0.93, "#93c5fd"],
-      [1, "#ffffff"],
+      1.056 * lobulo(l, 599.8, 37.9, 31.0) + 0.362 * lobulo(l, 442.0, 16.0, 26.7) - 0.065 * lobulo(l, 501.1, 20.4, 26.2),
+      0.821 * lobulo(l, 568.8, 46.9, 40.5) + 0.286 * lobulo(l, 530.9, 16.3, 31.1),
+      1.217 * lobulo(l, 437.0, 11.8, 36.0) + 0.681 * lobulo(l, 459.0, 26.0, 13.8),
     ];
+  }
+  function xyzALineal(X, Y, Z) { // XYZ -> sRGB lineal (D65)
+    return [
+      Math.max(0, 3.2406 * X - 1.5372 * Y - 0.4986 * Z),
+      Math.max(0, -0.9689 * X + 1.8758 * Y + 0.0415 * Z),
+      Math.max(0, 0.0557 * X - 0.204 * Y + 1.057 * Z),
+    ];
+  }
+  function gammaSRGB(v) {
+    v = clamp(v, 0, 1);
+    return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+  }
+
+  // Cuerpo negro a T (°C): color lineal con luminancia Y = 1 y luminancia relativa.
+  var cacheCuerpoNegro = {};
+  function cuerpoNegro(tC) {
+    var clave = Math.round(tC / 5) * 5;
+    if (cacheCuerpoNegro[clave]) return cacheCuerpoNegro[clave];
+    var T = clave + 273.15, X = 0, Y = 0, Z = 0;
+    for (var l = 380; l <= 780; l += 5) {
+      var lm = l * 1e-9;
+      var B = 1 / (Math.pow(lm, 5) * (Math.exp(C2 / (lm * T)) - 1)); // Planck (sin constantes)
+      var c = cmf(l);
+      X += B * c[0]; Y += B * c[1]; Z += B * c[2];
+    }
+    return (cacheCuerpoNegro[clave] = { rgb: cromaticidad(xyzALineal(X, Y, Z)), Y: Y });
+  }
+
+  // Normaliza un color lineal para que su canal mayor valga 1 (solo el tono).
+  function cromaticidad(rgb) {
+    var m = Math.max(rgb[0], rgb[1], rgb[2]) || 1;
+    return [rgb[0] / m, rgb[1] / m, rgb[2] / m];
+  }
+
+  // Tono de la zona de reacción: emisión de CH* (431 nm) + C2* (banda de Swan,
+  // 516 nm). La proporción real varía con el combustible; aquí C2* pesa la mitad
+  // que CH* (aproximación), lo que da el azul típico de una llama sin hollín.
+  var AZUL_CH = (function () {
+    var ch = cmf(431), c2 = cmf(516);
+    return cromaticidad(xyzALineal(ch[0] + 0.5 * c2[0], ch[1] + 0.5 * c2[1], ch[2] + 0.5 * c2[2]));
+  })();
+
+  // Color en pantalla de un punto de la llama.
+  //  tC: temperatura local; hollinLocal: 0 (sin hollín) a 1; tRef: temperatura de la zona más caliente.
+  function colorLlama(tC, hollinLocal, tRef) {
+    var rgb = [0, 0, 0];
+    // Opacidad del hollín: con un poco de hollín su brillo ya domina sobre el de CH*/C2*.
+    var hollinVisible = 1 - Math.exp(-4 * hollinLocal);
+    if (tC > PUNTO_DRAPER_C) {
+      var cn = cuerpoNegro(tC);
+      var brillo = Math.pow(cn.Y / cuerpoNegro(tRef).Y, 0.22); // exposición automática + compresión
+      for (var k = 0; k < 3; k++) rgb[k] += hollinVisible * cn.rgb[k] * brillo * 2.2;
+    }
+    // CH*/C2*: tenue, solo se ve donde no hay hollín (por eso las llamas con hollín se ven amarillas)
+    var azul = (1 - hollinVisible) * 0.9 * clamp((tC - PUNTO_DRAPER_C) / 500, 0, 1);
+    for (var j = 0; j < 3; j++) rgb[j] += AZUL_CH[j] * azul;
+    var r = Math.round(255 * gammaSRGB(1 - Math.exp(-rgb[0])));
+    var g = Math.round(255 * gammaSRGB(1 - Math.exp(-rgb[1])));
+    var b = Math.round(255 * gammaSRGB(1 - Math.exp(-rgb[2])));
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  // Hollín a lo largo de la llama: la base (zona de reacción) casi sin hollín y
+  // azul; el hollín aparece aguas arriba en la llama. hollin = valor del combustible.
+  function hollinLocal(p, u, frac) {
+    var h = p.parametros.hollin * clamp((u - 0.08) / 0.35, 0, 1);
+    return clamp(h * (0.7 + 0.3 * (1 - frac)), 0, 1);
+  }
+
+  // Nombre del color dominante, leído del color calculado en la zona más caliente.
+  function describirColor(tMax, hollin) {
+    var cn = cuerpoNegro(tMax);
+    var rel = cn.rgb[1] / cn.rgb[0]; // verde/rojo del tono de cuerpo negro: más alto = más amarillo
+    var tono = rel < 0.12 ? "rojo" : rel < 0.22 ? "naranja rojizo" : rel < 0.32 ? "naranja" : "amarillo anaranjado";
+    if (hollin < 0.2) {
+      return {
+        nombre: "Azul tenue",
+        explicacion: "Casi sin hollín: domina la emisión azul de CH* de la zona de reacción, como la llama de metanol descrita en FLEX. El hollín que hay brillaría " + tono + " a " + tMax + " °C.",
+      };
+    }
+    return {
+      nombre: (hollin < 0.5 ? "Base azul y cuerpo " : "") + tono + (hollin >= 0.5 ? " luminoso con base azul" : ""),
+      explicacion: "Color de cuerpo negro del hollín a " + tMax + " °C (ley de Planck, CIE 1931). La base se ve azul por la emisión de CH* donde aún no hay hollín.",
+    };
+  }
+
+  // Escala de la barra lateral: los mismos colores del hollín, en el rango de la llama actual.
+  function escalaTemperatura(tMin, tMax, tRef) {
+    var pasos = 12, escala = [];
+    for (var i = 0; i <= pasos; i++) {
+      var t = tMin + ((tMax - tMin) * i) / pasos;
+      escala.push([i / pasos, colorLlama(t, 1, tRef)]);
+    }
+    return escala;
   }
 
   // Temperatura local en °C en un punto de la llama:
@@ -286,7 +361,7 @@
         z.push(zz);
         // En la superficie frac ~ 1 (borde), así que es la zona
         // más fría de la llama a esa altura.
-        tempC.push(tempLocal(p, u, 1, factorCapa));
+        tempC.push(colorLlama(tempLocal(p, u, 1, factorCapa), hollinLocal(p, u, 1), p.parametros.temperatura));
       }
     }
 
@@ -313,10 +388,7 @@
       i: ii,
       j: jj,
       k: kk,
-      intensity: tempC,
-      cmin: TEMP_MIN,
-      cmax: TEMP_MAX,
-      colorscale: escalaTemperatura(),
+      vertexcolor: tempC, // color calculado en cada vértice (Planck + CH*)
       opacity: opacidad,
       flatshading: false,
       lighting: { ambient: 0.7, diffuse: 0.6, specular: 0.4, roughness: 0.6 },
@@ -346,7 +418,7 @@
       x.push(r * Math.cos(theta) + dx);
       y.push(r * Math.sin(theta));
       z.push(p.parametros.baseZ + u * p.parametros.altura);
-      temp.push(tempLocal(p, u, frac, 1));
+      temp.push(colorLlama(tempLocal(p, u, frac, 1), hollinLocal(p, u, frac), p.parametros.temperatura));
     }
 
     return {
@@ -358,19 +430,58 @@
       marker: {
         size: 3,
         color: temp,
-        cmin: TEMP_MIN,
-        cmax: TEMP_MAX,
-        colorscale: escalaTemperatura(),
         opacity: 0.8,
         line: { width: 0 },
-        colorbar: { title: "Temperatura (°C)", thickness: 12, len: 0.45, x: 0.98, xanchor: "right", y: 0.04, yanchor: "bottom" },
       },
       hoverinfo: "skip",
       name: "Volumen caliente",
     };
   }
 
+  // Barra de temperatura: rango real de la llama dibujada (mín. del borde - máx.)
+  // con los mismos colores del hollín. Cambia con cada slider.
+  function crearBarraTemperatura(p) {
+    var tMin = Math.round(tempLocal({ parametros: p }, 1, 1, 0.75));
+    var tMax = p.temperatura;
+    return {
+      type: "scatter3d",
+      mode: "markers",
+      x: [0], y: [0], z: [p.baseZ],
+      marker: {
+        size: 0.1,
+        opacity: 0,
+        color: [tMax],
+        cmin: tMin,
+        cmax: tMax,
+        colorscale: escalaTemperatura(tMin, tMax, tMax),
+        showscale: true,
+        colorbar: {
+          title: { text: "Temperatura (°C)<br><sub>máx. " + tMax + " °C</sub>", side: "right" },
+          thickness: 12, len: 0.45, x: 0.98, xanchor: "right", y: 0.04, yanchor: "bottom",
+          tickfont: { color: "#e5e5e5" },
+        },
+      },
+      hoverinfo: "skip",
+      name: "Escala",
+    };
+  }
+
   // ---------- Dibujo ----------
+
+  // Compuestos de PSI-68 (FLEX-2): deslizadores con data-hollin y data-nombre.
+  // Devuelve null si no hay ninguno activo (se usa el hidrocarburo genérico).
+  function leerMezcla() {
+    var total = 0, hollin = 0, nombres = [];
+    document.querySelectorAll("input[data-compuesto]").forEach(function (el) {
+      var v = parseFloat(el.value) || 0;
+      if (v <= 0) return;
+      total += v;
+      hollin += v * parseFloat(el.dataset.hollin);
+      nombres.push(el.dataset.nombre + " " + Math.round(v * 100) + " %");
+    });
+    if (total <= 0) return null;
+    return { hollin: hollin / total, nombre: nombres.join(" + ") };
+  }
 
   function leerParametros() {
     var elQuemador = document.getElementById("diametro-quemador");
@@ -378,7 +489,8 @@
       parseFloat(document.getElementById("gravedad").value),
       parseFloat(document.getElementById("oxigeno").value),
       parseFloat(document.getElementById("tamano").value),
-      elQuemador ? parseFloat(elQuemador.value) : QUEMADOR_REF_CM
+      elQuemador ? parseFloat(elQuemador.value) : QUEMADOR_REF_CM,
+      leerMezcla()
     );
   }
 
@@ -402,13 +514,14 @@
     set("info-forma", p.forma);
     set("info-color", p.colorDominante);
     set("info-color-explicacion", p.colorExplicacion);
+    set("info-combustible", p.combustible + " (hollín relativo " + p.hollin.toFixed(2) + ")");
     set(
       "info-oxigeno",
       p.oxigeno < 18
-        ? "Combustión pobre: llama tenue y anaranjada."
+        ? "Oxígeno bajo: en este modelo la llama es más pequeña y menos caliente."
         : p.oxigeno > 28
-          ? "Combustión intensa: núcleo más azulado y brillante."
-          : "Combustión estable."
+          ? "Oxígeno alto: en este modelo la llama es más grande y más caliente."
+          : "Oxígeno cercano al del aire (21 %)."
     );
   }
 
@@ -426,6 +539,7 @@
       crearCapa(0.68, 0.4, 0.9, { parametros: p }),
       crearCapa(0.4, 0.55, 1.0, { parametros: p }),
       crearVolumen({ parametros: p }),
+      crearBarraTemperatura(p),
       crearCilindro(radioMecha, 0, p.baseZ, "#1e293b", 0.95, "Mecha"),
       crearCilindro(radioQuemador, -0.4, 0, "#475569", 0.95, "Quemador"),
     ];
@@ -438,13 +552,17 @@
       zerolinecolor: "#7fbf2a",
       backgroundcolor: "#3b3b3b",
       showbackground: true,
+      showspikes: false, // sin las líneas guía blancas al pasar el ratón
     };
     var layout = {
       paper_bgcolor: "#3b3b3b",
       font: { color: "#e5e5e5", family: "Inter, system-ui, sans-serif" },
       margin: { l: 0, r: 0, t: 0, b: 0 },
       showlegend: false,
+      hovermode: false,
+      uirevision: "llama", // conserva el giro/zoom del usuario al mover los sliders
       scene: {
+        hovermode: false,
         bgcolor: "#3b3b3b",
         xaxis: Object.assign({ title: "X (cm)", range: [-rango, rango] }, ejeVisor),
         yaxis: Object.assign({ title: "Y (cm)", range: [-rango, rango] }, ejeVisor),
@@ -463,6 +581,8 @@
       Plotly.newPlot(GRAFICA_ID, datos, layout, config);
       window.__llamaDibujada = true;
     }
+    window.__ultimaLlama = p;
+    window.dispatchEvent(new CustomEvent("fsgx:llama", { detail: p }));
   }
 
   function init() {
@@ -470,6 +590,9 @@
     ids.forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("input", dibujar);
+    });
+    document.querySelectorAll("input[data-compuesto]").forEach(function (el) {
+      el.addEventListener("input", dibujar);
     });
     dibujar();
   }
