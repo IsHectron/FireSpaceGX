@@ -5,23 +5,73 @@
 {% block contenido %}
   <h1>Asistente IA</h1>
 
-  <input id="pregunta" type="text" size="60" placeholder="Escribe tu pregunta...">
+  <input id="pregunta" type="text" size="60" maxlength="800" placeholder="Escribe tu pregunta...">
   <button id="enviar">Enviar</button>
+  <button id="nueva" type="button">Nueva conversación</button>
+
+  <p id="pregunta-mostrada" hidden><b>Tu pregunta:</b> <span id="pregunta-texto"></span></p>
 
   <h3>Respuesta:</h3>
   <pre id="respuesta" style="white-space: pre-wrap;"></pre>
 
-  <h3>Fuentes:</h3>
+  <h3 id="titulo-fuentes" hidden>Fuentes:</h3>
   <ul id="fuentes"></ul>
+{% endblock %}
 
+{% block scripts %}
   <script>
+    // ---------- Memoria: solo el intercambio anterior ----------
+    // Se guarda en sessionStorage: dura mientras la pestaña esté abierta
+    // (aunque cambies a Inicio o Simulación) y se borra al cerrarla.
+    const CLAVE_MEMORIA = "firespace_ultimo_turno";
+
     const input = document.getElementById("pregunta");
     const boton = document.getElementById("enviar");
+    const botonNueva = document.getElementById("nueva");
+    const preguntaMostrada = document.getElementById("pregunta-mostrada");
+    const preguntaTexto = document.getElementById("pregunta-texto");
     const salida = document.getElementById("respuesta");
+    const tituloFuentes = document.getElementById("titulo-fuentes");
     const listaFuentes = document.getElementById("fuentes");
+
+    function cargarUltimoTurno() {
+      try {
+        const turno = JSON.parse(sessionStorage.getItem(CLAVE_MEMORIA));
+        return turno && typeof turno.pregunta === "string" ? turno : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function guardarUltimoTurno(turno) {
+      try {
+        if (turno) sessionStorage.setItem(CLAVE_MEMORIA, JSON.stringify(turno));
+        else sessionStorage.removeItem(CLAVE_MEMORIA);
+      } catch (e) {
+        // Si el navegador no permite guardar, el seguimiento solo dura en esta página.
+      }
+    }
+
+    let ultimoTurno = cargarUltimoTurno(); // {pregunta, respuesta, fuentes} o null
+
+    function historialParaServidor() {
+      if (!ultimoTurno) return [];
+      return [
+        { rol: "usuario", texto: ultimoTurno.pregunta },
+        { rol: "asistente", texto: ultimoTurno.respuesta }
+      ];
+    }
+
+    // ---------- Mostrar en pantalla ----------
+
+    function mostrarPregunta(pregunta) {
+      preguntaTexto.textContent = pregunta;
+      preguntaMostrada.hidden = !pregunta;
+    }
 
     function mostrarFuentes(fuentes) {
       listaFuentes.replaceChildren();
+      tituloFuentes.hidden = fuentes.length === 0;
       for (const f of fuentes) {
         const li = document.createElement("li");
         li.appendChild(document.createTextNode("[" + f.id + "] " + f.fuente + " — "));
@@ -39,36 +89,68 @@
       }
     }
 
+    // ---------- Envío de preguntas ----------
+
     async function enviar() {
       const pregunta = input.value.trim();
-      if (!pregunta) return;
+      if (!pregunta || boton.disabled) return;
 
       boton.disabled = true;
+      input.value = "";
+      mostrarPregunta(pregunta);
       salida.textContent = "Pensando...";
-      listaFuentes.replaceChildren();
+      mostrarFuentes([]);
 
       try {
         const r = await fetch("/api/preguntar", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pregunta })
+          body: JSON.stringify({ pregunta, historial: historialParaServidor() })
         });
-        const datos = await r.json();
+
+        let datos;
+        try {
+          datos = await r.json();
+        } catch (e) {
+          datos = { ok: false, error: "el servidor respondió algo inesperado (código " + r.status + ")." };
+        }
 
         if (datos.ok) {
+          const fuentes = datos.fuentes || [];
           salida.textContent = datos.respuesta;
-          mostrarFuentes(datos.fuentes || []);
+          mostrarFuentes(fuentes);
+          ultimoTurno = { pregunta, respuesta: datos.respuesta, fuentes };
+          guardarUltimoTurno(ultimoTurno);
         } else {
+          // Los errores se muestran, pero no reemplazan a la pregunta anterior en la memoria.
           salida.textContent = "Error: " + datos.error;
         }
       } catch (e) {
         salida.textContent = "Error: no se pudo conectar con el servidor.";
       } finally {
         boton.disabled = false;
+        input.focus();
       }
     }
 
+    function nuevaConversacion() {
+      ultimoTurno = null;
+      guardarUltimoTurno(null);
+      mostrarPregunta("");
+      salida.textContent = "";
+      mostrarFuentes([]);
+      input.focus();
+    }
+
     boton.addEventListener("click", enviar);
+    botonNueva.addEventListener("click", nuevaConversacion);
     input.addEventListener("keydown", e => { if (e.key === "Enter") enviar(); });
+
+    // Al volver a esta página, se muestra la última respuesta de esta pestaña.
+    if (ultimoTurno) {
+      mostrarPregunta(ultimoTurno.pregunta);
+      salida.textContent = ultimoTurno.respuesta;
+      mostrarFuentes(ultimoTurno.fuentes || []);
+    }
   </script>
 {% endblock %}

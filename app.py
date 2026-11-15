@@ -29,6 +29,12 @@ FRAGMENTOS_POR_PREGUNTA = 6
 MAX_TOKENS_CLASIFICAR = 300     # margen suficiente incluso para modelos que "piensan" antes de responder
 MAX_TOKENS_RESPUESTA = 1000
 
+# Memoria de la conversación: el navegador envía solo el intercambio anterior
+# (la pregunta anterior y su respuesta), para entender preguntas como "¿y eso por qué?".
+MAX_MENSAJES_HISTORIAL = 2        # 1 pregunta + 1 respuesta
+MAX_CARACTERES_POR_MENSAJE = 700
+PALABRAS_PREGUNTA_CORTA = 8       # preguntas así de cortas suelen depender de la anterior ("¿y eso por qué?")
+
 # Razonamiento interno del modelo ("pensar" antes de responder). "none" lo desactiva:
 # respuestas más rápidas y sin el riesgo de que el modelo gaste todos sus tokens pensando.
 # Se puede cambiar en el .env con RAZONAMIENTO_IA=low (o medium). Con "modelo" no se envía el ajuste.
@@ -51,34 +57,51 @@ PATRON_CONVERSACION = re.compile(
     r"|tu tema|de que trata (esto|firespace|la pagina)|que es firespace"
 )
 
+PERSONALIDAD = """Personalidad del asistente de FireSpace:
+- Eres cálido, cercano y entusiasta, como un amigo al que le apasiona el espacio y le encanta contagiar esa curiosidad. Siempre eres respetuoso y nunca te burlas de nadie.
+- Por defecto hablas sencillo, para que cualquier persona te entienda sin saber de ciencia: frases cortas, palabras de todos los días, comparaciones con cosas cotidianas, y cada término técnico lo explicas en pocas palabras la primera vez que lo usas.
+- Solo te pones técnico si la persona escribe con lenguaje técnico o dice que es estudiante, investigador o ingeniero del tema.
+- Adapta tu tono al de la persona: si escribe casual, con risas o expresiones mexicanas, respóndele con ese mismo tono relajado; si escribe formal, responde formal.
+- Puedes usar algún emoji de vez en cuando (por ejemplo 🔥, 🚀, 😮), sin exagerar y nunca en respuestas técnicas.
+- Tu tema es la combustión en el espacio y la seguridad contra incendios en la exploración espacial; siempre llevas la conversación de vuelta a eso con naturalidad."""
+
 PROMPT_CLASIFICAR = (
     "Analiza el mensaje del usuario.\n"
-    "- Si es conversación cotidiana (saludos, agradecimientos, cómo estás) o una pregunta sobre "
+    "- Si es conversación cotidiana (saludos, agradecimientos, cómo estás), una reacción o expresión "
+    "(sorpresa, risa, asombro, como \"wow\", \"jajaja\", \"alatorre\", \"no manches\") o una pregunta sobre "
     "el asistente, FireSpace o sus fuentes (quién eres, qué puedes hacer, de qué temas hablas, "
     "cómo funcionas, de dónde sacas tu información), responde exactamente: META\n"
     "- En cualquier otro caso, conviértelo en entre 5 y 10 palabras clave en inglés para buscar "
     "en documentos técnicos de NASA sobre combustión. Incluye sinónimos técnicos y nombres de "
     "experimentos si se mencionan. Si la pregunta es amplia (por ejemplo, datos curiosos), "
-    "elige términos generales y variados del tema. Responde SOLO con las palabras separadas por espacios."
+    "elige términos generales y variados del tema. Si se incluye una pregunta anterior, úsala solo para "
+    "entender a qué se refiere el mensaje actual (por ejemplo, \"eso\" o \"ese experimento\"). "
+    "Responde SOLO con las palabras separadas por espacios."
 )
 
-PROMPT_RESPUESTA = """Eres el asistente científico de FireSpace, especializado en combustión en el espacio y seguridad contra incendios. Respondes con base en los fragmentos numerados de fuentes oficiales de NASA que se te entregan.
+PROMPT_RESPUESTA = PERSONALIDAD + """
+
+Respondes con base en los fragmentos numerados de fuentes oficiales de NASA que se te entregan.
 Reglas obligatorias:
 1. Todo dato concreto (cifras, resultados, condiciones de prueba, nombres y objetivos de experimentos, fechas, hechos históricos y conclusiones de NASA) debe venir de los fragmentos y llevar su cita entre corchetes, por ejemplo [2] o [1][3].
 2. Puedes usar conocimiento científico general para explicar conceptos básicos, conectar ideas, comparar, razonar o proponer, como lo haría un buen profesor. Esas partes no llevan cita y deben presentarse como explicación o razonamiento, nunca como un resultado de NASA.
 3. Nunca inventes datos, cifras, resultados, fechas, autores, publicaciones ni enlaces. Si la pregunta pide un dato que no aparece en los fragmentos, dilo con naturalidad, por ejemplo: "No tengo información sobre...".
 4. Si la pregunta parte de una idea incorrecta, corrígela con base en las fuentes.
-5. Adapta el tono: si la pregunta es casual o de divulgación, explica de forma amigable y sencilla para cualquier persona; si es técnica, responde con la precisión que esperaría un investigador o ingeniero aeroespacial. La extensión debe ser proporcional a la pregunta.
+5. Sigue la personalidad descrita arriba: por defecto, explica de forma amigable y sencilla para cualquier persona; si la pregunta es técnica, responde con la precisión que esperaría un investigador o ingeniero aeroespacial. Ve al grano: la extensión debe ser proporcional a la pregunta, y una pregunta sencilla merece una respuesta corta.
 6. Responde en español; los fragmentos están en inglés: tradúcelos con fidelidad.
-7. Escribe como si explicaras directamente, con tus propias palabras. Nunca menciones de dónde sacas la información con frases como "las fuentes", "los fragmentos", "los documentos", "el texto" o "la información proporcionada": las citas entre corchetes ya indican el origen y el usuario no sabe qué documentos recibiste. Escribe en texto plano, sin Markdown (nada de asteriscos ni almohadillas); para listas usa guiones."""
+7. Escribe como si explicaras directamente, con tus propias palabras. Nunca menciones de dónde sacas la información con frases como "las fuentes", "los fragmentos", "los documentos", "el texto" o "la información proporcionada": las citas entre corchetes ya indican el origen y el usuario no sabe qué documentos recibiste. Escribe en texto plano, sin Markdown (nada de asteriscos ni almohadillas); para listas usa guiones.
+8. Puede haber mensajes anteriores de la conversación. Úsalos solo para entender a qué se refiere la pregunta actual (por ejemplo, "eso" o "ese experimento"). Los datos y las citas deben salir únicamente de los fragmentos de esta pregunta."""
 
-PROMPT_META = """Eres el asistente de FireSpace. Conversa de forma natural, cálida y breve, respondiendo exactamente a lo que el usuario dice o pregunta.
+PROMPT_META = PERSONALIDAD + """
+
+Ahora estás conversando. Responde de forma natural y breve, exactamente a lo que la persona dice o pregunta.
 Reglas:
 1. Para hablar de ti, de FireSpace o de tus fuentes, usa SOLO la información de la FICHA. No inventes capacidades, fuentes ni datos.
 2. Si es un saludo, un agradecimiento o charla cotidiana, responde brevemente y con amabilidad, e invita a preguntar sobre combustión en el espacio con un ejemplo.
+2b. Si es una reacción o expresión (sorpresa, risa, asombro, como "alatorre", "no manches", "wow" o "jajaja"), reacciona con la misma energía y conéctala con lo último que hablaron: puedes retomar con tus palabras algo de tu respuesta anterior o invitar a seguir con una pregunta relacionada. Si no hay conversación previa, reacciona con simpatía y pregunta qué le sorprendió. Nunca trates una expresión como si fuera un nombre o una palabra desconocida.
 3. Si te piden explicar tu tema de forma sencilla (por ejemplo, a un niño), descríbelo con palabras simples usando solo lo que dice la FICHA, sin agregar datos científicos.
 4. Si preguntan algo ajeno a FireSpace y a la combustión en el espacio, explica con amabilidad que no es tu tema y sugiere dos o tres preguntas que sí puedes responder.
-5. No respondas aquí preguntas científicas detalladas: invita al usuario a hacerlas directamente para responderle con fuentes.
+5. No agregues aquí datos científicos nuevos (solo puedes retomar lo que ya dijiste en la conversación). Si te hacen una pregunta científica, invita a la persona a hacerla directamente para responderle con fuentes. Si el mensaje parece continuar la conversación anterior pero no tienes información para responderlo, pide amablemente que lo explique un poco más.
 6. Responde en español, en texto plano, sin formato Markdown.
 
 FICHA:
@@ -139,6 +162,36 @@ def generar(mensajes, temperatura, max_tokens):
     return texto, r.model
 
 
+def limpiar_historial(crudo):
+    """Convierte el historial que manda el navegador en mensajes seguros para la IA.
+    Solo acepta los roles esperados, recorta el texto y quita las citas viejas [n],
+    porque esos números se referían a las fuentes de preguntas anteriores."""
+    if not isinstance(crudo, list):
+        return []
+    mensajes = []
+    for item in crudo[-MAX_MENSAJES_HISTORIAL:]:
+        if not isinstance(item, dict):
+            continue
+        rol = item.get("rol")
+        texto = str(item.get("texto", "")).strip()
+        if rol not in ("usuario", "asistente") or not texto:
+            continue
+        texto = re.sub(r"\[\d+(?:\s*,\s*\d+)*\]", "", texto)
+        texto = texto.replace(NOTA_SIN_CITAS.strip(), "").strip()
+        mensajes.append({
+            "role": "user" if rol == "usuario" else "assistant",
+            "content": texto[:MAX_CARACTERES_POR_MENSAJE],
+        })
+    return mensajes
+
+
+def ultima_pregunta(historial):
+    for mensaje in reversed(historial):
+        if mensaje["role"] == "user":
+            return mensaje["content"]
+    return ""
+
+
 class LimiteDeUso(Exception):
     """Se agotaron las consultas permitidas por el proveedor de IA."""
 
@@ -152,21 +205,32 @@ def es_limite_de_uso(error):
     return "RateLimit" in type(error).__name__ or "429" in str(error)
 
 
+# Reacciones y expresiones cortas: van directo a la conversación, sin buscar en la biblioteca.
+PATRON_REACCION = re.compile(
+    r"^(ja(ja)*|je(je)*|ji(ji)*|xd+|lol|wow+|guau+|alatorre+|no manches|no mames|orale|chale|"
+    r"que padre|que chido|que locura|que loco|increible|impresionante|genial|cool|"
+    r"neta|en serio|a poco|ok|okay|va|sale|vale|ya veo|interesante|nombre|uff+|o+h+|a+h+)\b"
+)
+
+
 def clasificar_sin_ia(pregunta):
     """Modo ahorro: detecta la conversación con patrones; la búsqueda usará el glosario."""
     texto = biblioteca.sin_acentos(pregunta.lower()).strip(" ¿?¡!.,")
     if PATRON_CONVERSACION.search(texto):
         return "META", ""
+    if len(texto.split()) <= 4 and PATRON_REACCION.search(texto):
+        return "META", ""
     return "BIBLIOTECA", ""
 
 
-def clasificar(pregunta):
+def clasificar(pregunta, anterior=""):
     """Devuelve ("META", "") si el mensaje es sobre el asistente,
     o ("BIBLIOTECA", palabras_clave_en_ingles) si es una pregunta para buscar en las fuentes."""
     try:
         texto, _ = generar(
             [{"role": "system", "content": PROMPT_CLASIFICAR},
-             {"role": "user", "content": pregunta}],
+             {"role": "user", "content": (f"Pregunta anterior (solo contexto): {anterior}\n"
+                                          f"Mensaje actual: {pregunta}") if anterior else pregunta}],
             temperatura=0,
             max_tokens=MAX_TOKENS_CLASIFICAR,
         )
@@ -234,11 +298,12 @@ def ficha_del_asistente():
     ])
 
 
-def responder_conversacion(pregunta):
+def responder_conversacion(pregunta, historial=()):
     """Respuesta natural a saludos o preguntas sobre el asistente, basada en la ficha."""
     try:
         texto, modelo = generar(
             [{"role": "system", "content": PROMPT_META.format(ficha=ficha_del_asistente())},
+             *historial,
              {"role": "user", "content": pregunta}],
             temperatura=0.4,
             max_tokens=600,
@@ -361,25 +426,30 @@ def preguntar():
         return jsonify({"ok": False, "error": "La biblioteca todavía no está lista."}), 503
 
     inicio = time.perf_counter()
+    historial = limpiar_historial(datos.get("historial"))
+    anterior = ultima_pregunta(historial)
 
     # 1. ¿Es una pregunta sobre el asistente o una pregunta para las fuentes?
     try:
-        tipo, claves = clasificar(pregunta) if CLASIFICAR_CON_IA else clasificar_sin_ia(pregunta)
+        tipo, claves = clasificar(pregunta, anterior) if CLASIFICAR_CON_IA else clasificar_sin_ia(pregunta)
     except LimiteDeUso:
         return jsonify({"ok": False, "error": MENSAJE_LIMITE}), 429
     if tipo == "META":
-        texto, modelo = responder_conversacion(pregunta)
+        texto, modelo = responder_conversacion(pregunta, historial)
         return jsonify({"ok": True, "modelo": modelo, "respuesta": texto, "fuentes": []})
 
     # 2. Buscar en la biblioteca (palabras en inglés + la pregunta original)
     print(f"[FireSpace] Palabras de búsqueda: {claves or '(ninguna)'}", flush=True)
-    fragmentos = biblioteca.buscar(f"{claves} {pregunta}", FRAGMENTOS_POR_PREGUNTA)
+    texto_busqueda = f"{claves} {pregunta}"
+    if anterior and len(pregunta.split()) <= PALABRAS_PREGUNTA_CORTA:
+        texto_busqueda += f" {anterior}"  # "¿y eso por qué?" se busca junto con la pregunta anterior
+    fragmentos = biblioteca.buscar(texto_busqueda, FRAGMENTOS_POR_PREGUNTA)
     print(f"[FireSpace] Fragmentos encontrados: {len(fragmentos)}", flush=True)
 
     # 3. Sin documentos no hay respuesta científica: la pregunta pasa al modo conversación,
     #    que responde sobre el asistente o explica con amabilidad que el tema no le corresponde.
     if not fragmentos:
-        texto, modelo = responder_conversacion(pregunta)
+        texto, modelo = responder_conversacion(pregunta, historial)
         return jsonify({"ok": True, "modelo": modelo, "respuesta": texto, "fuentes": []})
 
     # 4. Pedir la respuesta usando solo los fragmentos encontrados
@@ -389,6 +459,7 @@ def preguntar():
     try:
         texto, modelo = generar(
             [{"role": "system", "content": PROMPT_RESPUESTA},
+             *historial,
              {"role": "user", "content": f"Fragmentos:\n\n{contexto}\n\nPregunta: {pregunta}"}],
             temperatura=0.3,
             max_tokens=MAX_TOKENS_RESPUESTA,
