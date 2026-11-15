@@ -84,7 +84,8 @@ def buscar(texto, limite=6, por_documento=2):
     con = sqlite3.connect(RUTA_BD)
     try:
         filas = con.execute(
-            """SELECT d.id, d.titulo, d.url, d.via, fragmentos.pagina, fragmentos.texto
+            """SELECT d.id, d.titulo, d.url, d.via, fragmentos.pagina, fragmentos.texto,
+                      bm25(fragmentos)
                FROM fragmentos
                JOIN documentos AS d ON d.id = fragmentos.documento_id
                WHERE fragmentos MATCH ?
@@ -97,11 +98,15 @@ def buscar(texto, limite=6, por_documento=2):
 
     elegidos = []
     usados = {}
-    for id_doc, titulo, url, via, pagina, texto in filas:
+    for id_doc, titulo, url, via, pagina, texto, puntaje in filas:
         if usados.get(id_doc, 0) >= por_documento:
             continue
         usados[id_doc] = usados.get(id_doc, 0) + 1
-        elegidos.append({"titulo": titulo, "url": url, "via": via, "pagina": pagina, "texto": texto})
+        elegidos.append({
+            "id_documento": id_doc, "titulo": titulo, "url": url, "via": via,
+            "pagina": pagina, "texto": texto,
+            "puntaje": puntaje,  # relevancia de SQLite: más negativo = más relevante
+        })
         if len(elegidos) == limite:
             break
     return elegidos
@@ -116,3 +121,35 @@ def catalogo():
         return con.execute("SELECT via, titulo FROM documentos ORDER BY titulo").fetchall()
     finally:
         con.close()
+
+
+# Campos de la ficha de una investigación de PSI, tal como los escribe scripts/psi_a_txt.py
+CAMPOS_PSI = {
+    "plataforma": r"Flight platform: ([^\n]+?)\.(?:\s|$)",
+    "tipo_proyecto": r"Project type: ([^\n]+?)\.(?:\s|$)",
+    "area": r"Research area: ([^\n]+?)\.(?:\s|$)",
+    "inicio": r"Start date: ([\d-]+)",
+    "fin": r"End date: ([\d-]+)",
+    "equipo": r"Experiment hardware: ([^\n]+?)\.(?:\s|$)",
+}
+
+
+def detalles_psi(id_documento):
+    """Lee la ficha (plataforma, fechas, equipo...) de una investigación de PSI.
+    Devuelve {} si el documento no es de PSI o no tiene esos datos."""
+    if not str(id_documento).startswith("psi_") or not disponible():
+        return {}
+    con = sqlite3.connect(RUTA_BD)
+    try:
+        filas = con.execute(
+            "SELECT texto FROM fragmentos WHERE documento_id = ? ORDER BY orden", (id_documento,)
+        ).fetchall()
+    finally:
+        con.close()
+    texto = " ".join(fila[0] for fila in filas)
+    detalles = {}
+    for campo, patron in CAMPOS_PSI.items():
+        encontrado = re.search(patron, texto)
+        if encontrado:
+            detalles[campo] = " ".join(encontrado.group(1).split())[:150]
+    return detalles

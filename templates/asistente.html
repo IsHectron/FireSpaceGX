@@ -3,27 +3,73 @@
 {% block titulo %}Asistente IA · FireSpace{% endblock %}
 
 {% block contenido %}
-  <h1>Asistente IA</h1>
+  <style>
+    .asistente-layout { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .asistente-chat { flex: 1 1 380px; min-width: 0; }
+    .panel { flex: 0 1 420px; min-width: 0; border: 1px solid #ddd; border-radius: 12px; padding: 14px; background: #f7f8fa; }
+    .panel h2 { margin: 0 0 12px; font-size: 1.25em; }
+    .bloque { background: #fff; border: 1px solid #e3e5e8; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .bloque h3 { margin: 0 0 10px; font-size: 1em; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+    .kpi { border: 1px solid #e3e5e8; border-radius: 8px; padding: 8px; }
+    .kpi-icono { font-size: 1.3em; }
+    .kpi-valor { font-size: 1.4em; font-weight: bold; margin: 2px 0; }
+    .kpi-titulo { font-weight: bold; font-size: 0.9em; }
+    .kpi-detalle { font-size: 0.8em; color: #666; }
+    .pasos { list-style: none; padding: 0; margin: 0; counter-reset: paso; }
+    .pasos li { counter-increment: paso; position: relative; padding: 0 0 10px 34px; font-size: 0.9em; }
+    .pasos li::before { content: counter(paso); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; background: #e2572b; color: #fff; text-align: center; line-height: 24px; font-size: 0.85em; }
+    .comparacion-opciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; margin-bottom: 8px; }
+    .comparacion-opcion { text-align: left; border: 1px solid #d5d8dc; border-radius: 8px; padding: 6px 8px; background: #fafafa; cursor: pointer; font: inherit; }
+    .comparacion-opcion.activa { border-color: #2b7de2; background: #eef5fe; }
+    .comparacion-opcion b { display: block; font-size: 0.9em; }
+    .comparacion-opcion span { font-size: 0.78em; color: #555; }
+    .comparacion-detalle p { margin: 4px 0; font-size: 0.88em; }
+    .lista-icono { display: flex; gap: 8px; margin-bottom: 8px; font-size: 0.9em; }
+    .lista-icono .icono { font-size: 1.2em; }
+    .tiempo { border-left: 3px solid #e2572b; padding-left: 12px; }
+    .tiempo div { margin-bottom: 8px; font-size: 0.88em; }
+    .dato { background: #fff7e6; border-color: #f3d19c; font-size: 0.92em; }
+    .grafica-contenedor { position: relative; height: 230px; }
+    .tabla-bloque { overflow-x: auto; }
+    .tabla-bloque table { border-collapse: collapse; width: 100%; font-size: 0.85em; }
+    .tabla-bloque th, .tabla-bloque td { border: 1px solid #e3e5e8; padding: 4px 6px; text-align: left; }
+    .barra-fila { margin-bottom: 6px; font-size: 0.85em; }
+    .barra-fondo { background: #e6e6e6; border-radius: 4px; height: 10px; margin-top: 2px; }
+    .barra-relleno { background: #e2572b; border-radius: 4px; height: 10px; }
+    .panel-nota { font-size: 0.78em; color: #666; margin: 4px 0 0; }
+  </style>
 
-  <input id="pregunta" type="text" size="60" maxlength="800" placeholder="Escribe tu pregunta...">
-  <button id="enviar">Enviar</button>
-  <button id="nueva" type="button">Nueva conversación</button>
+  <div class="asistente-layout">
+    <section class="asistente-chat">
+      <h1>Asistente IA</h1>
 
-  <p id="pregunta-mostrada" hidden><b>Tu pregunta:</b> <span id="pregunta-texto"></span></p>
+      <input id="pregunta" type="text" size="50" maxlength="800" placeholder="Escribe tu pregunta...">
+      <button id="enviar">Enviar</button>
+      <button id="nueva" type="button">Nueva conversación</button>
 
-  <h3>Respuesta:</h3>
-  <pre id="respuesta" style="white-space: pre-wrap;"></pre>
+      <p id="pregunta-mostrada" hidden><b>Tu pregunta:</b> <span id="pregunta-texto"></span></p>
 
-  <h3 id="titulo-fuentes" hidden>Fuentes:</h3>
-  <ul id="fuentes"></ul>
+      <h3>Respuesta:</h3>
+      <pre id="respuesta" style="white-space: pre-wrap;"></pre>
+
+      <h3 id="titulo-fuentes" hidden>Fuentes:</h3>
+      <ul id="fuentes"></ul>
+    </section>
+
+    <!-- Tablero visual de la última búsqueda de información -->
+    <aside id="panel" class="panel" hidden></aside>
+  </div>
 {% endblock %}
 
 {% block scripts %}
+  <!-- Chart.js para las gráficas; si no carga, el panel usa barras simples -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script>
-    // ---------- Memoria: solo el intercambio anterior ----------
-    // Se guarda en sessionStorage: dura mientras la pestaña esté abierta
-    // (aunque cambies a Inicio o Simulación) y se borra al cerrarla.
-    const CLAVE_MEMORIA = "firespace_ultimo_turno";
+    // ---------- Memoria de la pestaña ----------
+    const CLAVE_TURNO = "firespace_ultimo_turno";
+    const CLAVE_PANEL = "firespace_panel";
+    const COLORES = ["#e2572b", "#2b7de2", "#2bb673", "#9b59b6", "#f1c40f", "#16a085", "#e67e22", "#34495e"];
 
     const input = document.getElementById("pregunta");
     const boton = document.getElementById("enviar");
@@ -33,39 +79,48 @@
     const salida = document.getElementById("respuesta");
     const tituloFuentes = document.getElementById("titulo-fuentes");
     const listaFuentes = document.getElementById("fuentes");
+    const panel = document.getElementById("panel");
+    let graficas = []; // gráficas de Chart.js activas, para borrarlas al cambiar de panel
 
-    function cargarUltimoTurno() {
-      try {
-        const turno = JSON.parse(sessionStorage.getItem(CLAVE_MEMORIA));
-        return turno && typeof turno.pregunta === "string" ? turno : null;
-      } catch (e) {
-        return null;
-      }
+    function leer(clave) {
+      try { return JSON.parse(sessionStorage.getItem(clave)); } catch (e) { return null; }
     }
 
-    function guardarUltimoTurno(turno) {
+    function guardar(clave, valor) {
       try {
-        if (turno) sessionStorage.setItem(CLAVE_MEMORIA, JSON.stringify(turno));
-        else sessionStorage.removeItem(CLAVE_MEMORIA);
-      } catch (e) {
-        // Si el navegador no permite guardar, el seguimiento solo dura en esta página.
-      }
+        if (valor) sessionStorage.setItem(clave, JSON.stringify(valor));
+        else sessionStorage.removeItem(clave);
+      } catch (e) { /* sin memoria del navegador: solo dura en esta página */ }
     }
 
-    let ultimoTurno = cargarUltimoTurno(); // {pregunta, respuesta, fuentes} o null
+    let ultimoTurno = leer(CLAVE_TURNO);
+    let ultimoPanel = leer(CLAVE_PANEL);
 
     function historialParaServidor() {
-      if (!ultimoTurno) return [];
+      if (!ultimoTurno || typeof ultimoTurno.pregunta !== "string") return [];
       return [
         { rol: "usuario", texto: ultimoTurno.pregunta },
         { rol: "asistente", texto: ultimoTurno.respuesta }
       ];
     }
 
-    // ---------- Mostrar en pantalla ----------
+    // ---------- Utilidades (siempre textContent: el contenido nunca se interpreta como HTML) ----------
+
+    function el(etiqueta, texto, clase) {
+      const nodo = document.createElement(etiqueta);
+      if (texto !== undefined && texto !== null) nodo.textContent = texto;
+      if (clase) nodo.className = clase;
+      return nodo;
+    }
+
+    function formatear(valor) {
+      return Number.isInteger(valor) ? String(valor) : valor.toLocaleString("es-MX", { maximumFractionDigits: 3 });
+    }
+
+    // ---------- Respuesta y fuentes ----------
 
     function mostrarPregunta(pregunta) {
-      preguntaTexto.textContent = pregunta;
+      preguntaTexto.textContent = pregunta || "";
       preguntaMostrada.hidden = !pregunta;
     }
 
@@ -73,20 +128,193 @@
       listaFuentes.replaceChildren();
       tituloFuentes.hidden = fuentes.length === 0;
       for (const f of fuentes) {
-        const li = document.createElement("li");
-        li.appendChild(document.createTextNode("[" + f.id + "] " + f.fuente + " — "));
+        const li = el("li", "[" + f.id + "] " + f.fuente + " — ");
         if (typeof f.url === "string" && f.url.startsWith("https://")) {
-          const a = document.createElement("a");
+          const a = el("a", f.titulo);
           a.href = f.url;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
-          a.textContent = f.titulo;
           li.appendChild(a);
         } else {
           li.appendChild(document.createTextNode(f.titulo));
         }
         listaFuentes.appendChild(li);
       }
+    }
+
+    // ---------- Un dibujo para cada tipo de bloque ----------
+
+    const DIBUJAR = {
+      kpis(b, caja) {
+        const rejilla = el("div", null, "kpis");
+        for (const i of b.items) {
+          const kpi = el("div", null, "kpi");
+          if (i.icono) kpi.appendChild(el("div", i.icono, "kpi-icono"));
+          kpi.appendChild(el("div", i.valor, "kpi-valor"));
+          kpi.appendChild(el("div", i.titulo, "kpi-titulo"));
+          if (i.detalle) kpi.appendChild(el("div", i.detalle, "kpi-detalle"));
+          rejilla.appendChild(kpi);
+        }
+        caja.appendChild(rejilla);
+      },
+
+      pasos(b, caja) {
+        const lista = el("ol", null, "pasos");
+        for (const i of b.items) {
+          const li = el("li");
+          li.appendChild(el("b", i.titulo));
+          if (i.detalle) li.appendChild(el("div", i.detalle));
+          lista.appendChild(li);
+        }
+        caja.appendChild(lista);
+      },
+
+      comparacion(b, caja) {
+        const opciones = el("div", null, "comparacion-opciones");
+        const detalle = el("div", null, "comparacion-detalle");
+        const botones = [];
+        const seleccionar = (indice) => {
+          botones.forEach((bt, k) => bt.classList.toggle("activa", k === indice));
+          const item = b.items[indice];
+          detalle.replaceChildren(el("h4", item.nombre));
+          for (const d of item.detalles) {
+            const p = el("p");
+            p.appendChild(el("b", d.campo + ": "));
+            p.appendChild(document.createTextNode(d.valor));
+            detalle.appendChild(p);
+          }
+        };
+        b.items.forEach((item, indice) => {
+          const bt = el("button", null, "comparacion-opcion");
+          bt.type = "button";
+          bt.appendChild(el("b", item.nombre));
+          if (item.resumen) bt.appendChild(el("span", item.resumen));
+          bt.addEventListener("click", () => seleccionar(indice));
+          botones.push(bt);
+          opciones.appendChild(bt);
+        });
+        caja.append(opciones, detalle);
+        seleccionar(0);
+      },
+
+      lista(b, caja) {
+        for (const i of b.items) {
+          const fila = el("div", null, "lista-icono");
+          fila.appendChild(el("span", i.icono || "•", "icono"));
+          const texto = el("div");
+          if (i.titulo) texto.appendChild(el("b", i.titulo));
+          if (i.texto) texto.appendChild(el("div", i.texto));
+          fila.appendChild(texto);
+          caja.appendChild(fila);
+        }
+      },
+
+      linea_tiempo(b, caja) {
+        const linea = el("div", null, "tiempo");
+        for (const i of b.items) {
+          const evento = el("div");
+          evento.appendChild(el("b", i.fecha + " · " + i.titulo));
+          if (i.texto) evento.appendChild(el("div", i.texto));
+          linea.appendChild(evento);
+        }
+        caja.appendChild(linea);
+      },
+
+      dato(b, caja) {
+        caja.classList.add("dato");
+        caja.appendChild(el("div", (b.icono ? b.icono + " " : "✨ ") + b.texto));
+      },
+
+      tabla(b, caja) {
+        const contenedor = el("div", null, "tabla-bloque");
+        const tabla = el("table");
+        const encabezado = el("tr");
+        b.columnas.forEach(c => encabezado.appendChild(el("th", c)));
+        tabla.appendChild(encabezado);
+        for (const fila of b.filas) {
+          const tr = el("tr");
+          fila.forEach(celda => tr.appendChild(el("td", celda)));
+          tabla.appendChild(tr);
+        }
+        contenedor.appendChild(tabla);
+        caja.appendChild(contenedor);
+      },
+
+      grafica(b, caja) {
+        if (typeof Chart === "undefined") {
+          // Respaldo sin Chart.js: barras simples con la primera serie
+          const serie = b.series[0];
+          const maximo = Math.max(...serie.valores.map(Math.abs)) || 1;
+          b.etiquetas.forEach((etiqueta, k) => {
+            const fila = el("div", null, "barra-fila");
+            fila.appendChild(el("div", etiqueta + ": " + formatear(serie.valores[k]) + " " + (b.unidad || "")));
+            const fondo = el("div", null, "barra-fondo");
+            const relleno = el("div", null, "barra-relleno");
+            relleno.style.width = Math.max(2, 100 * Math.abs(serie.valores[k]) / maximo) + "%";
+            fondo.appendChild(relleno);
+            fila.appendChild(fondo);
+            caja.appendChild(fila);
+          });
+          return;
+        }
+        const contenedor = el("div", null, "grafica-contenedor");
+        const lienzo = el("canvas");
+        contenedor.appendChild(lienzo);
+        caja.appendChild(contenedor);
+
+        const circular = b.subtipo === "dona";
+        const tipo = { barras: "bar", barras_horizontales: "bar", lineas: "line", dona: "doughnut", radar: "radar" }[b.subtipo] || "bar";
+        const series = circular ? b.series.slice(0, 1) : b.series;
+        const datasets = series.map((s, k) => ({
+          label: s.nombre || b.unidad || "",
+          data: s.valores,
+          backgroundColor: circular ? COLORES : COLORES[k % COLORES.length] + (tipo === "radar" ? "55" : ""),
+          borderColor: circular ? "#fff" : COLORES[k % COLORES.length],
+          borderWidth: 2,
+          tension: 0.3
+        }));
+        const opciones = {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: circular || series.length > 1 } }
+        };
+        if (b.subtipo === "barras_horizontales") opciones.indexAxis = "y";
+        if (!circular && tipo !== "radar" && b.unidad) {
+          const eje = b.subtipo === "barras_horizontales" ? "x" : "y";
+          opciones.scales = { [eje]: { title: { display: true, text: b.unidad } } };
+        }
+        graficas.push(new Chart(lienzo, { type: tipo, data: { labels: b.etiquetas, datasets }, options: opciones }));
+      }
+    };
+
+    function mostrarPanel(datos) {
+      graficas.forEach(g => g.destroy());
+      graficas = [];
+      panel.replaceChildren();
+      if (!datos) {
+        panel.hidden = true;
+        return;
+      }
+      panel.hidden = false;
+      panel.appendChild(el("h2", "📊 " + datos.titulo));
+
+      if (!datos.bloques || !datos.bloques.length) {
+        panel.appendChild(el("p", "No se pudo generar el tablero para esta consulta. Intenta preguntar de otra forma.", "panel-nota"));
+        return;
+      }
+      for (const bloque of datos.bloques) {
+        const dibujar = DIBUJAR[bloque.tipo];
+        if (!dibujar) continue;
+        const caja = el("div", null, "bloque");
+        if (bloque.titulo) caja.appendChild(el("h3", bloque.titulo));
+        try {
+          dibujar(bloque, caja);
+          panel.appendChild(caja);
+        } catch (e) {
+          // Si un bloque viene mal formado, se omite sin romper el resto del panel.
+        }
+      }
+      panel.appendChild(el("p", "Tablero generado por IA a partir de las fuentes de la respuesta.", "panel-nota"));
     }
 
     // ---------- Envío de preguntas ----------
@@ -120,9 +348,15 @@
           salida.textContent = datos.respuesta;
           mostrarFuentes(fuentes);
           ultimoTurno = { pregunta, respuesta: datos.respuesta, fuentes };
-          guardarUltimoTurno(ultimoTurno);
+          guardar(CLAVE_TURNO, ultimoTurno);
+
+          // Solo las búsquedas de información traen panel; si no trae, se queda el anterior.
+          if (datos.panel) {
+            ultimoPanel = datos.panel;
+            guardar(CLAVE_PANEL, ultimoPanel);
+            mostrarPanel(ultimoPanel);
+          }
         } else {
-          // Los errores se muestran, pero no reemplazan a la pregunta anterior en la memoria.
           salida.textContent = "Error: " + datos.error;
         }
       } catch (e) {
@@ -135,10 +369,13 @@
 
     function nuevaConversacion() {
       ultimoTurno = null;
-      guardarUltimoTurno(null);
+      ultimoPanel = null;
+      guardar(CLAVE_TURNO, null);
+      guardar(CLAVE_PANEL, null);
       mostrarPregunta("");
       salida.textContent = "";
       mostrarFuentes([]);
+      mostrarPanel(null);
       input.focus();
     }
 
@@ -146,11 +383,12 @@
     botonNueva.addEventListener("click", nuevaConversacion);
     input.addEventListener("keydown", e => { if (e.key === "Enter") enviar(); });
 
-    // Al volver a esta página, se muestra la última respuesta de esta pestaña.
-    if (ultimoTurno) {
+    if (ultimoTurno && typeof ultimoTurno.pregunta === "string") {
       mostrarPregunta(ultimoTurno.pregunta);
       salida.textContent = ultimoTurno.respuesta;
       mostrarFuentes(ultimoTurno.fuentes || []);
     }
+    // Un panel guardado con el formato anterior (sin "bloques") se descarta.
+    if (ultimoPanel && Array.isArray(ultimoPanel.bloques)) mostrarPanel(ultimoPanel);
   </script>
 {% endblock %}
