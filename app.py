@@ -11,7 +11,8 @@ from openai import OpenAI
 
 import biblioteca
 
-load_dotenv(override=True)  # el .env siempre manda, aunque la terminal tenga valores viejos
+load_dotenv(override=True)
+# el .env siempre manda, aunque la terminal tenga valores viejos
 
 app = Flask(__name__)
 
